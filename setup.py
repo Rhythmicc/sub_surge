@@ -25,7 +25,7 @@ setup(
     install_requires=["Qpro"],
     entry_points={
         "console_scripts": [
-            "sub_surge = sub_surge.main:main",
+            "sub-surge = sub_surge.main:main",
         ]
     },
 )
