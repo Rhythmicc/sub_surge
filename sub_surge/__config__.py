@@ -42,4 +42,6 @@ class sub_surgeConfig:
             json.dump(self.config, f, indent=4, ensure_ascii=False)
 
     def get_all(self):
-        return list(self.config.keys())
+        res = list(self.config.keys())
+        res.remove("txcos_domain")
+        return res
