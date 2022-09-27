@@ -20,12 +20,11 @@ def update(name: str):
     :param name: 机场名称
     """
     if not os.path.exists(".{name}.conf"):
-        with QproDefaultConsole.status("正在下载配置文件"):
-            requirePackage(
-                "QuickStart_Rhy.NetTools.NormalDL",
-                "normal_dl",
-                real_name="QuickStart_Rhy",
-            )(config.select(name)["url"], f".{name}.conf")
+        requirePackage(
+            "QuickStart_Rhy.NetTools.NormalDL",
+            "normal_dl",
+            real_name="QuickStart_Rhy",
+        )(config.select(name)["url"], f".{name}.conf")
 
     with open(f".{name}.conf", "r") as f:
         content = [i.strip() for i in f.readlines()]
@@ -69,11 +68,9 @@ def update(name: str):
 
         f.write(conf_template.format(**infos))
     with QproDefaultConsole.status("正在上传配置文件"):
-        requirePackage(
-            "QuickStart_Rhy.API.TencentCloud",
-            "TxCOS",
-            real_name="QuickStart_Rhy",
-        )().upload(f".{name}.conf", config.select(name)["key"])
+        from QuickStart_Rhy.API.TencentCloud import TxCOS
+
+        TxCOS().upload(f".{name}.conf", key=config.select(name)["key"])
     requirePackage("QuickStart_Rhy", "remove")(f".{name}.conf")
     QproDefaultConsole.print(
         QproInfoString,
@@ -143,6 +140,31 @@ def unregister(name: str):
         requirePackage("QuickStart_Rhy", "remove")(os.path.join(cur_path, f"{name}.py"))
         config.update(name, None)
         QproDefaultConsole.print(QproInfoString, "删除成功")
+
+
+@app.command()
+def complete():
+    """
+    生成补全脚本，并应用fig至.fig/autocomplete/src/
+    """
+    from . import _ask
+
+    if _ask(
+        {"type": "confirm", "message": "此操作会创建complete文件夹, 是否继续?", "default": False}
+    ):
+        from QuickProject.Qpro import gen_complete
+
+        gen_complete("sub-surge")
+
+        import shutil
+
+        shutil.copyfile(
+            "complete/fig/sub-surge.ts",
+            os.path.join(user_root, ".fig/autocomplete/src/sub-surge.ts"),
+        )
+        QproDefaultConsole.print(QproInfoString, "补全脚本生成并应用成功")
+
+        requirePackage("QuickStart_Rhy", "remove")("complete")
 
 
 def main():
