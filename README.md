@@ -3,7 +3,7 @@
 ## Install
 
 ```shell
-pip3 install sub_surge -U
+pip3 install git+https://github.com/Rhythmicc/sub_surge.git -U
 ```
 
 ## Usage
