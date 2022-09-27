@@ -156,15 +156,16 @@ def complete():
 
         gen_complete("sub-surge")
 
-        import shutil
+        if _ask({"type": "confirm", "message": "是否应用至fig并删除complete文件夹"}):
+            import shutil
 
-        shutil.copyfile(
-            "complete/fig/sub-surge.ts",
-            os.path.join(user_root, ".fig/autocomplete/src/sub-surge.ts"),
-        )
-        QproDefaultConsole.print(QproInfoString, "补全脚本生成并应用成功")
+            shutil.copyfile(
+                "complete/fig/sub-surge.ts",
+                os.path.join(user_root, ".fig/autocomplete/src/sub-surge.ts"),
+            )
+            QproDefaultConsole.print(QproInfoString, "补全脚本生成并应用成功")
 
-        requirePackage("QuickStart_Rhy", "remove")("complete")
+            requirePackage("QuickStart_Rhy", "remove")("complete")
 
 
 def main():
