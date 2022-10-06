@@ -78,8 +78,13 @@ def update(name: str):
     )
 
     if copy := requirePackage("pyperclip", "copy", not_ask=True):
-        copy(f"{config.select('txcos_domain')}/{config.select(name)['key']}")
-        QproDefaultConsole.print(QproInfoString, f"链接已复制到剪贴板")
+        try:
+            copy(f"{config.select('txcos_domain')}/{config.select(name)['key']}")
+            QproDefaultConsole.print(QproInfoString, f"链接已复制到剪贴板")
+        except Exception as e:
+            from QuickProject import QproErrorString
+
+            QproDefaultConsole.print(QproErrorString, f"复制链接失败: {repr(e)}")
 
 
 @app.command()
