@@ -171,6 +171,16 @@ def check(airport: str, key2: str = "", val: str = ""):
 
 
 @app.command()
+def upgrade():
+    """
+    更新
+    """
+    external_exec(
+        f"{user_pip} install git+https://github.com/Rhythmicc/sub_surge.git -U", True
+    )
+
+
+@app.command()
 def complete():
     """
     生成补全脚本，并应用fig至.fig/autocomplete/src/
