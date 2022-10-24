@@ -175,9 +175,11 @@ def upgrade():
     """
     更新
     """
-    external_exec(
-        f"{user_pip} install git+https://github.com/Rhythmicc/sub_surge.git -U", True
-    )
+    with QproDefaultConsole.status('正在更新 "QuickStart_Rhy"'):
+        external_exec(
+            f"{user_pip} install git+https://github.com/Rhythmicc/sub_surge.git -U",
+            True,
+        )
 
 
 @app.command()
