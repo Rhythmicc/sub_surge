@@ -147,6 +147,29 @@ def unregister(name: str):
         QproDefaultConsole.print(QproInfoString, "删除成功")
 
 
+@app.custom_complete("airport")
+def check():
+    return [
+        {"name": i, "icon": "✈️", "description": config.select(i)["show_name"]}
+        for i in config.get_all()
+    ]
+
+
+@app.command()
+def check(airport: str, key2: str = "", val: str = ""):
+    """
+    检查配置
+
+    :param airport: 机场名
+    :param key2: 键
+    :param val: 值
+    """
+    if key2:
+        config[airport][key2] = val
+    else:
+        QproDefaultConsole.print(config.select(airport))
+
+
 @app.command()
 def complete():
     """
