@@ -13,11 +13,12 @@ def update():
 
 
 @app.command()
-def update(name: str):
+def update(name: str, copy: bool = False):
     """
     更新Surge配置文件
 
     :param name: 机场名称
+    :param copy: 是否复制到剪贴板
     """
     if not os.path.exists(".{name}.conf"):
         requirePackage(
@@ -77,9 +78,9 @@ def update(name: str):
         f"更新成功, 链接: {config.select('txcos_domain')}/{config.select(name)['key']}",
     )
 
-    if copy := requirePackage("pyperclip", "copy", not_ask=True):
+    if copy and (cp := requirePackage("pyperclip", "copy", not_ask=True)):
         try:
-            copy(f"{config.select('txcos_domain')}/{config.select(name)['key']}")
+            cp(f"{config.select('txcos_domain')}/{config.select(name)['key']}")
             QproDefaultConsole.print(QproInfoString, f"链接已复制到剪贴板")
         except Exception as e:
             from QuickProject import QproErrorString
