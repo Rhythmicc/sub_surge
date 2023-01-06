@@ -37,6 +37,8 @@ DIRECT = direct
 [Rule]
 DOMAIN-SUFFIX,cupbug.cloud,DIRECT
 DOMAIN-SUFFIX,microsoftonline.cn,DIRECT
+DOMAIN-SUFFIX,xilinx-ax-dl.entitlenow.com,DIRECT
+DOMAIN-SUFFIX,openai.com,🇺🇸 美国最佳
 DOMAIN-SUFFIX,youtube.com,🚀 节点选择
 DOMAIN-SUFFIX,jp,🇯🇵 日本最佳
 RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/LocalAreaNetwork.list,🎯 全球直连,update-interval=86400
