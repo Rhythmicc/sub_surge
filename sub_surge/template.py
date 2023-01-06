@@ -1,4 +1,9 @@
-conf_template = """#!MANAGED-CONFIG {cos_url} interval=86400 strict=false
+from . import config
+
+conf_template = (
+    "#!MANAGED-CONFIG {cos_url}"
+    + f" interval={config.select('interval')} strict=false"
+    + """
 [General]
 loglevel = notify
 bypass-system = true
@@ -59,3 +64,4 @@ RULE-SET,https://raw.githubusercontent.com/Rhythmicc/ACL4SSR/master/Clash/us.lis
 GEOIP,CN,🎯 全球直连
 FINAL,🐟 漏网之鱼
 """
+)
