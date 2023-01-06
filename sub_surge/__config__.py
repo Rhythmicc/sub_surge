@@ -51,4 +51,5 @@ class sub_surgeConfig:
     def get_all(self):
         res = list(self.config.keys())
         res.remove("txcos_domain")
+        res.remove("interval")
         return res
