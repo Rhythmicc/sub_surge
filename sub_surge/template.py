@@ -40,10 +40,6 @@ DIRECT = direct
 🇸🇬 狮城最佳 = url-test,{proxies_one_line_sg},url=http://www.gstatic.com/generate_204,interval=300,tolerance=50
 
 [Rule]
-DOMAIN-SUFFIX,cupbug.cloud,DIRECT
-DOMAIN-SUFFIX,microsoftonline.cn,DIRECT
-DOMAIN-SUFFIX,xilinx-ax-dl.entitlenow.com,DIRECT
-DOMAIN-SUFFIX,openai.com,🇺🇸 美国最佳
 DOMAIN-SUFFIX,youtube.com,🚀 节点选择
 DOMAIN-SUFFIX,jp,🇯🇵 日本最佳
 RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/LocalAreaNetwork.list,🎯 全球直连,update-interval=86400
@@ -61,6 +57,7 @@ RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ProxyLit
 RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaDomain.list,🎯 全球直连,update-interval=86400
 RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaCompanyIp.list,🎯 全球直连,update-interval=86400
 RULE-SET,https://raw.githubusercontent.com/Rhythmicc/ACL4SSR/master/Clash/us.list,🇺🇸 美国最佳,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/Rhythmicc/ACL4SSR/master/Clash/direct.list,DIRECT,update-interval=86400
 GEOIP,CN,🎯 全球直连
 FINAL,🐟 漏网之鱼
 """
