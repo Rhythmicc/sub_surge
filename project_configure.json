@@ -6,7 +6,7 @@
   "template_root": "",
   "server_targets": [
     {
-      "user": "",
+      "user": "lianhaocheng",
       "host": "localhost",
       "port": 22,
       "path": "/opt/homebrew/lib/python3.10/site-packages/"

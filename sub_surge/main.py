@@ -20,12 +20,14 @@ def update(name: str, copy: bool = False):
     :param name: 机场名称
     :param copy: 是否复制到剪贴板
     """
-    if not os.path.exists(".{name}.conf"):
-        requirePackage(
-            "QuickStart_Rhy.NetTools.NormalDL",
-            "normal_dl",
-            real_name="QuickStart_Rhy",
-        )(config.select(name)["url"], f".{name}.conf")
+    if os.path.exists(f".{name}.conf"):
+        os.remove(f".{name}.conf")
+
+    requirePackage(
+        "QuickStart_Rhy.NetTools.NormalDL",
+        "normal_dl",
+        real_name="QuickStart_Rhy",
+    )(config.select(name)["url"], f".{name}.conf")
 
     with open(f".{name}.conf", "r") as f:
         content = [i.strip() for i in f.readlines()]
