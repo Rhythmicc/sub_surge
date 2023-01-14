@@ -20,14 +20,14 @@ def update(name: str, copy: bool = False):
     :param name: 机场名称
     :param copy: 是否复制到剪贴板
     """
-    if os.path.exists(f".{name}.conf"):
-        os.remove(f".{name}.conf")
+    # if os.path.exists(f".{name}.conf"):
+    #     os.remove(f".{name}.conf")
 
-    requirePackage(
-        "QuickStart_Rhy.NetTools.NormalDL",
-        "normal_dl",
-        real_name="QuickStart_Rhy",
-    )(config.select(name)["url"], f".{name}.conf")
+    # requirePackage(
+    #     "QuickStart_Rhy.NetTools.NormalDL",
+    #     "normal_dl",
+    #     real_name="QuickStart_Rhy",
+    # )(config.select(name)["url"], f".{name}.conf")
 
     with open(f".{name}.conf", "r") as f:
         content = [i.strip() for i in f.readlines()]
@@ -35,6 +35,7 @@ def update(name: str, copy: bool = False):
     other_infos = requirePackage(f".airports.{name}", "get_other_infos")(content)
 
     all_proxy_list = proxy_list.copy()
+    pop_items = []
     for item in other_infos:
         for _id, line in enumerate(all_proxy_list):
             if other_infos[item].strip() in line:
@@ -43,7 +44,15 @@ def update(name: str, copy: bool = False):
                     f'{item}: {other_infos[item].split("=")[0].strip()} = '
                     + "=".join(line.split("=")[1:]).strip()
                 )
+                pop_items.append(item)
                 break
+    for item in other_infos:
+        if item in pop_items:
+            continue
+        all_proxy_list.insert(
+            len(pop_items),
+            f"{item}: {other_infos[item]} = trojan, example.com, 19757, password=info, sni=example.com, skip-cert-verify=true, tfo=true, udp-relay=true",
+        )
     with open(f".{name}.conf", "w") as f:
         infos = {
             "cos_url": f"{config.select('txcos_domain')}/{config.select(name)['key']}",
