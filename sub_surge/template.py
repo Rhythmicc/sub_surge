@@ -42,6 +42,7 @@ DIRECT = direct
 [Rule]
 DOMAIN-SUFFIX,youtube.com,🚀 节点选择
 DOMAIN-SUFFIX,jp,🇯🇵 日本最佳
+DOMAIN-SUFFIX,openai.com,🇺🇸 美国最佳
 RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/LocalAreaNetwork.list,🎯 全球直连,update-interval=86400
 RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/UnBan.list,🎯 全球直连,update-interval=86400
 RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/BanAD.list,🛑 全球拦截,update-interval=86400
