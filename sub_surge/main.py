@@ -79,7 +79,8 @@ def update(name: str, copy: bool = False):
         from .template import conf_template
 
         f.write(conf_template.format(**infos))
-    with QproDefaultConsole.status("正在上传配置文件"):
+
+    with QproDefaultStatus("正在上传配置文件"):
         from QuickStart_Rhy.API.TencentCloud import TxCOS
 
         TxCOS().upload(f".{name}.conf", key=config.select(name)["key"])
