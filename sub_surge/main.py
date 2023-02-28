@@ -23,13 +23,16 @@ def update(name: str, copy: bool = False):
     if os.path.exists(f".{name}.conf"):
         os.remove(f".{name}.conf")
 
-    requirePackage(
-        "QuickStart_Rhy.NetTools.NormalDL",
-        "normal_dl",
-        real_name="QuickStart_Rhy",
-    )(config.select(name)["url"], f".{name}.conf")
+    if not (
+        path := requirePackage(
+            "QuickStart_Rhy.NetTools.NormalDL",
+            "normal_dl",
+            real_name="QuickStart_Rhy",
+        )(config.select(name)["url"], f".{name}.conf")
+    ):
+        return QproDefaultConsole.print(QproErrorString, f"下载失败, 请检查链接是否正确")
 
-    with open(f".{name}.conf", "r") as f:
+    with open(path, "r") as f:
         content = [i.strip() for i in f.readlines()]
     proxy_list = requirePackage(f".airports.{name}", "get_proxies_list")(content)
     other_infos = requirePackage(f".airports.{name}", "get_other_infos")(content)
