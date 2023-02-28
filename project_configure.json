@@ -16,6 +16,12 @@
       "host": "tencent",
       "port": 26122,
       "path": "/usr/local/lib/python3.10/dist-packages/"
+    },
+    {
+      "user": "",
+      "host": "hc-server-zerotier",
+      "port": 18022,
+      "path": "/usr/local/lib/python3.10/dist-packages/"
     }
   ],
   "enable_complete": true
