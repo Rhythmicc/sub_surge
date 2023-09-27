@@ -78,6 +78,12 @@ def update(name: str, copy: bool = False):
             "proxies_one_line_sg": ",".join(
                 [i.split("=")[0].strip() for i in proxy_list if "新加坡" in i]
             ),
+            "proxies_one_line_gb": ",".join(
+                [i.split("=")[0].strip() for i in proxy_list if "英国" in i]
+            ),
+            "proxies_one_line_tw": ",".join(
+                [i.split("=")[0].strip() for i in proxy_list if "台湾" in i]
+            ),
         }
         from .template import conf_template
 

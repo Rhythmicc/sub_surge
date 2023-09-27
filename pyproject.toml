@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "sub-surge"
+version = "0.0.10"
+description = "Update surge config"
+authors = ["Rhythmicc <rhythmlian.cn@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "sub_surge"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+qpro = "^0.12.10"
+
+[tool.poetry.scripts]
+sub-surge = "sub_surge.main:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
