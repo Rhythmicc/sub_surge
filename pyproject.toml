@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "sub-surge"
-version = "0.0.10"
+version = "0.0.11"
 description = "Update surge config"
 authors = ["Rhythmicc <rhythmlian.cn@gmail.com>"]
 license = "MIT"
