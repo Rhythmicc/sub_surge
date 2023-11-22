@@ -6,7 +6,7 @@ enable_config = True
 config_path = os.path.join(user_root, ".sub_surge_config")
 
 questions = {
-    "txcos_domain": {"type": "input", "message": "请输入腾讯云对象存储 (COS) 服务的域名"},
+    "txcos_domain": {"type": "input", "message": "请输入腾讯云对象存储服务的域名 (没有则跳过)"},
     "interval": {
         "type": "input",
         "message": "请输入订阅更新间隔 (单位: 秒)",

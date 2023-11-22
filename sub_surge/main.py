@@ -65,48 +65,61 @@ def update(name: str, copy: bool = False):
             ),
             "proxies_one_line": ",".join(
                 [i.split("=")[0].strip() for i in proxy_list if i]
-            ),
-            "proxies_one_line_hk": ",".join(
-                [i.split("=")[0].strip() for i in proxy_list if "香港" in i]
-            ),
-            "proxies_one_line_jp": ",".join(
-                [i.split("=")[0].strip() for i in proxy_list if "日本" in i]
-            ),
-            "proxies_one_line_us": ",".join(
-                [i.split("=")[0].strip() for i in proxy_list if "美国" in i]
-            ),
-            "proxies_one_line_sg": ",".join(
-                [i.split("=")[0].strip() for i in proxy_list if "新加坡" in i]
-            ),
-            "proxies_one_line_gb": ",".join(
-                [i.split("=")[0].strip() for i in proxy_list if "英国" in i]
-            ),
-            "proxies_one_line_tw": ",".join(
-                [i.split("=")[0].strip() for i in proxy_list if "台湾" in i]
-            ),
+            )
         }
+
+        regions = {}
+        aim_regions = {
+            '香港': '🇭🇰 香港',
+            '日本': '🇯🇵 日本',
+            '美国': '🇺🇸 美国',
+            '新加坡': '🇸🇬 狮城',
+            '英国': '🇬🇧 英国',
+            '台湾': '🇨🇳 台湾',
+        }
+        for i in proxy_list:
+            for key in aim_regions:
+                if key in i:
+                    if aim_regions[key] not in regions:
+                        regions[aim_regions[key]] = []
+                    regions[aim_regions[key]].append(i.split("=")[0].strip())
+                    break
+        infos['regions'] = ",".join([i for i in regions])
+        infos['region_strategy'] = "\n".join(
+            [f"{i} = select,{','.join(regions[i])},🔧 手动切换" for i in regions]
+        )
+        infos['region_auto'] = "\n".join(
+            [f"{i}最佳 = url-test,{','.join(regions[i])},url=http://www.gstatic.com/generate_204,interval=300,tolerance=50" for i in regions] + 
+            [f"{i}均衡 = load-balance,{','.join(regions[i])},persistent=1" for i in regions]
+        )
+
         from .template import conf_template
 
         f.write(conf_template.format(**infos))
 
-    with QproDefaultStatus("正在上传配置文件"):
-        from QuickStart_Rhy.API.TencentCloud import TxCOS
+    if config.select('txcos_domain'):
+        with QproDefaultStatus("正在上传配置文件"):
+            from QuickStart_Rhy.API.TencentCloud import TxCOS
 
-        TxCOS().upload(f".{name}.conf", key=config.select(name)["key"])
-    requirePackage("QuickStart_Rhy", "remove")(f".{name}.conf")
-    QproDefaultConsole.print(
-        QproInfoString,
-        f"更新成功, 链接: {config.select('txcos_domain')}/{config.select(name)['key']}",
-    )
+            TxCOS().upload(f".{name}.conf", key=config.select(name)["key"])
+        requirePackage("QuickStart_Rhy", "remove")(f".{name}.conf")
+        QproDefaultConsole.print(
+            QproInfoString,
+            f"更新成功, 链接: {config.select('txcos_domain')}/{config.select(name)['key']}",
+        )
 
-    if copy and (cp := requirePackage("pyperclip", "copy", not_ask=True)):
-        try:
-            cp(f"{config.select('txcos_domain')}/{config.select(name)['key']}")
-            QproDefaultConsole.print(QproInfoString, f"链接已复制到剪贴板")
-        except Exception as e:
-            from QuickProject import QproErrorString
+        if copy and (cp := requirePackage("pyperclip", "copy", not_ask=True)):
+            try:
+                cp(f"{config.select('txcos_domain')}/{config.select(name)['key']}")
+                QproDefaultConsole.print(QproInfoString, f"链接已复制到剪贴板")
+            except Exception as e:
+                from QuickProject import QproErrorString
 
-            QproDefaultConsole.print(QproErrorString, f"复制链接失败: {repr(e)}")
+                QproDefaultConsole.print(QproErrorString, f"复制链接失败: {repr(e)}")
+    else:
+        import shutil
+        shutil.move(f".{name}.conf", f"{name}.conf")
+        QproDefaultConsole.print(QproInfoString, f"更新成功: {name}.conf")
 
 
 @app.command()
