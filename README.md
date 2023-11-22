@@ -1,4 +1,6 @@
-<h1 style="text-align: center"> sub_surge </h1>
+# sub_surge
+
+帮你在本地生成Surge的配置表，支持热门地区（香港、台湾、日本、美国、英国、新加坡）的最佳和负载均衡策略。
 
 ## Install
 
@@ -98,3 +100,7 @@ def get_other_infos(lines: list):
         index += 1
     return infos
 ```
+
+## Developer
+
+自定义规则集合，修改`template.py`中的配置表模板即可，你可以基于ACL4SSR项目中Clash的配置规则来自定义，填写配置表链接即可。
