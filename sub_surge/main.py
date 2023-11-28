@@ -86,7 +86,7 @@ def update(name: str, copy: bool = False):
                     break
         infos['regions'] = ",".join([i for i in regions])
         infos['region_strategy'] = "\n".join(
-            [f"{i} = select,{','.join(regions[i])},🔧 手动切换" for i in regions]
+            [f"{i} = select,{i}最佳,{i}均衡,🔧 手动切换" for i in regions]
         )
         infos['region_auto'] = "\n".join(
             [f"{i}最佳 = url-test,{','.join(regions[i])},url=http://www.gstatic.com/generate_204,interval=300,tolerance=50" for i in regions] + 
