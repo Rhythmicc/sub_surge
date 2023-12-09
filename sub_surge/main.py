@@ -13,15 +13,18 @@ def update():
 
 
 @app.command()
-def update(name: str, copy: bool = False):
+def update(name: str, force: bool = False, disable_txcos: bool = False):
     """
     更新Surge配置文件
 
     :param name: 机场名称
-    :param copy: 是否复制到剪贴板
+    :param force: 是否强制更新
     """
     if os.path.exists(f".{name}.conf"):
         os.remove(f".{name}.conf")
+    
+    if force and os.path.exists(f"{name}.conf"):
+        os.remove(f"{name}.conf")
 
     if not (
         path := requirePackage(
@@ -30,6 +33,7 @@ def update(name: str, copy: bool = False):
             real_name="QuickStart_Rhy",
         )(config.select(name)["url"], f".{name}.conf")
     ):
+        from QuickProject import QproErrorString
         return QproDefaultConsole.print(QproErrorString, f"下载失败, 请检查链接是否正确")
 
     with open(path, "r") as f:
@@ -97,7 +101,7 @@ def update(name: str, copy: bool = False):
 
         f.write(conf_template.format(**infos))
 
-    if config.select('txcos_domain'):
+    if not disable_txcos and config.select('txcos_domain'):
         with QproDefaultStatus("正在上传配置文件"):
             from QuickStart_Rhy.API.TencentCloud import TxCOS
 
@@ -107,15 +111,6 @@ def update(name: str, copy: bool = False):
             QproInfoString,
             f"更新成功, 链接: {config.select('txcos_domain')}/{config.select(name)['key']}",
         )
-
-        if copy and (cp := requirePackage("pyperclip", "copy", not_ask=True)):
-            try:
-                cp(f"{config.select('txcos_domain')}/{config.select(name)['key']}")
-                QproDefaultConsole.print(QproInfoString, f"链接已复制到剪贴板")
-            except Exception as e:
-                from QuickProject import QproErrorString
-
-                QproDefaultConsole.print(QproErrorString, f"复制链接失败: {repr(e)}")
     else:
         import shutil
         shutil.move(f".{name}.conf", f"{name}.conf")
