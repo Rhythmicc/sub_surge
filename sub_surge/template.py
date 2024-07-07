@@ -12,7 +12,7 @@ http-listen = 127.0.0.1:7891
 socks5-listen = 127.0.0.1:7890
 test-timeout = 5
 bypass-tun = 192.168.0.0/16,10.0.0.0/8,172.16.0.0/12
-dns-server = 119.29.29.29,223.5.5.5
+dns-server = system, 119.29.29.29, 223.5.5.5, 8.8.8.8
 allow-wifi-access = true
 wifi-access-http-port = 7891
 wifi-access-socks5-port = 7890
@@ -43,6 +43,7 @@ DIRECT = direct
 [Rule]
 DOMAIN-SUFFIX,youtube.com,🚀 节点选择
 DOMAIN-SUFFIX,jp,🇯🇵 日本
+RULE-SET,https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TikTok/TikTok.list,🇺🇸 美国,update-interval=86400
 RULE-SET,https://raw.githubusercontent.com/Rhythmicc/ACL4SSR/master/Clash/us.list,🇺🇸 美国,update-interval=86400
 RULE-SET,https://raw.githubusercontent.com/Rhythmicc/ACL4SSR/master/Clash/direct.list,DIRECT,update-interval=86400
 RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/LocalAreaNetwork.list,🎯 全球直连,update-interval=86400
