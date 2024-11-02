@@ -88,8 +88,6 @@ def update(name: str, force: bool = False, disable_txcos: bool = False):
             ),
         }
 
-        from QuickStart_Rhy.NetTools.NormalDL import normal_dl
-
         infos["host"] = parse_host(
             requirePackage(
                 "QuickStart_Rhy.NetTools.NormalDL",
