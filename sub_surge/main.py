@@ -4,6 +4,19 @@ from . import *
 app = Commander(name)
 
 
+def parse_host(content: str) -> str:
+    host = ""
+    for line in content.splitlines():
+        line = line.strip()
+        if line.startswith("#"):
+            continue
+        if not line.strip():
+            continue
+        line = line.split()
+        host += f"{line[0]} = {line[1]}\n"
+    return host
+
+
 @app.custom_complete("name")
 def update():
     return [
@@ -22,7 +35,7 @@ def update(name: str, force: bool = False, disable_txcos: bool = False):
     """
     if os.path.exists(f".{name}.conf"):
         os.remove(f".{name}.conf")
-    
+
     if force and os.path.exists(f"{name}.conf"):
         os.remove(f"{name}.conf")
 
@@ -34,7 +47,10 @@ def update(name: str, force: bool = False, disable_txcos: bool = False):
         )(config.select(name)["url"], f".{name}.conf")
     ):
         from QuickProject import QproErrorString
-        return QproDefaultConsole.print(QproErrorString, f"下载失败, 请检查链接是否正确")
+
+        return QproDefaultConsole.print(
+            QproErrorString, f"下载失败, 请检查链接是否正确"
+        )
 
     with open(path, "r") as f:
         content = [i.strip() for i in f.readlines()]
@@ -69,17 +85,30 @@ def update(name: str, force: bool = False, disable_txcos: bool = False):
             ),
             "proxies_one_line": ",".join(
                 [i.split("=")[0].strip() for i in proxy_list if i]
-            )
+            ),
         }
+
+        from QuickStart_Rhy.NetTools.NormalDL import normal_dl
+
+        infos["host"] = parse_host(
+            requirePackage(
+                "QuickStart_Rhy.NetTools.NormalDL",
+                "normal_dl",
+                real_name="QuickStart_Rhy",
+            )(
+                "https://raw.githubusercontent.com/maxiaof/github-hosts/refs/heads/master/hosts",
+                write_to_memory=True,
+            ).decode('utf-8')
+        )
 
         regions = {}
         aim_regions = {
-            '香港': '🇭🇰 香港',
-            '日本': '🇯🇵 日本',
-            '美国': '🇺🇸 美国',
-            '新加坡': '🇸🇬 狮城',
-            '英国': '🇬🇧 英国',
-            '台湾': '🇨🇳 台湾',
+            "香港": "🇭🇰 香港",
+            "日本": "🇯🇵 日本",
+            "美国": "🇺🇸 美国",
+            "新加坡": "🇸🇬 狮城",
+            "英国": "🇬🇧 英国",
+            "台湾": "🇨🇳 台湾",
         }
         for i in proxy_list:
             for key in aim_regions:
@@ -88,20 +117,26 @@ def update(name: str, force: bool = False, disable_txcos: bool = False):
                         regions[aim_regions[key]] = []
                     regions[aim_regions[key]].append(i.split("=")[0].strip())
                     break
-        infos['regions'] = ",".join([i for i in regions])
-        infos['region_strategy'] = "\n".join(
+        infos["regions"] = ",".join([i for i in regions])
+        infos["region_strategy"] = "\n".join(
             [f"{i} = select,{i}最佳,{i}均衡,🔧 手动切换" for i in regions]
         )
-        infos['region_auto'] = "\n".join(
-            [f"{i}最佳 = url-test,{','.join(regions[i])},url=http://www.gstatic.com/generate_204,interval=300,tolerance=50" for i in regions] + 
-            [f"{i}均衡 = load-balance,{','.join(regions[i])},persistent=1" for i in regions]
+        infos["region_auto"] = "\n".join(
+            [
+                f"{i}最佳 = url-test,{','.join(regions[i])},url=http://www.gstatic.com/generate_204,interval=300,tolerance=50"
+                for i in regions
+            ]
+            + [
+                f"{i}均衡 = load-balance,{','.join(regions[i])},persistent=1"
+                for i in regions
+            ]
         )
 
         from .template import conf_template
 
         f.write(conf_template.format(**infos))
 
-    if not disable_txcos and config.select('txcos_domain'):
+    if not disable_txcos and config.select("txcos_domain"):
         with QproDefaultStatus("正在上传配置文件"):
             from QuickStart_Rhy.API.TencentCloud import TxCOS
 
@@ -113,6 +148,7 @@ def update(name: str, force: bool = False, disable_txcos: bool = False):
         )
     else:
         import shutil
+
         shutil.move(f".{name}.conf", f"{name}.conf")
         QproDefaultConsole.print(QproInfoString, f"更新成功: {name}.conf")
 
@@ -141,13 +177,17 @@ def register(name: str):
     values = {
         "url": _ask({"type": "input", "message": "输入机场订阅链接"}),
         "key": _ask({"type": "input", "message": "输入腾讯云对应存储位置"}),
-        "show_name": _ask({"type": "input", "message": "输入机场描述信息", "default": name}),
+        "show_name": _ask(
+            {"type": "input", "message": "输入机场描述信息", "default": name}
+        ),
         "custom_format": _ask({"type": "input", "message": "输入自定义格式化文件路径"}),
     }
     if not os.path.exists(values["custom_format"]):
         from QuickProject import QproErrorString
 
-        return QproDefaultConsole.print(QproErrorString, "自定义格式化文件不存在, 请重新输入")
+        return QproDefaultConsole.print(
+            QproErrorString, "自定义格式化文件不存在, 请重新输入"
+        )
 
     values["custom_format"] = os.path.abspath(values["custom_format"])
     import shutil
