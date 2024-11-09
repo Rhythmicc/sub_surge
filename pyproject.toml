@@ -1,11 +1,29 @@
+[build-system]
+requires = [ "poetry-core",]
+build-backend = "poetry.core.masonry.api"
+
 [tool.poetry]
 name = "sub-surge"
 version = "0.0.12"
 description = "Update surge config"
-authors = ["Rhythmicc <rhythmlian.cn@gmail.com>"]
+authors = [ "Rhythmicc <rhythmlian.cn@gmail.com>",]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "sub_surge"}]
+[[tool.poetry.packages]]
+include = "sub_surge"
+
+[tool.qpro]
+[[tool.qpro.server_targets]]
+user = "lianhaocheng"
+host = "localhost"
+port = 22
+path = "/opt/homebrew/lib/python3.11/site-packages/"
+
+[[tool.qpro.server_targets]]
+user = ""
+host = "hc-server"
+port = 18022
+path = "/usr/local/lib/python3.10/dist-packages/"
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -14,6 +32,10 @@ qpro = "^0.12.10"
 [tool.poetry.scripts]
 sub-surge = "sub_surge.main:main"
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[tool.qpro.config]
+build = ""
+entry_point = "sub_surge/main.py"
+executable = "python3 -m sub_surge.main"
+input_file = ""
+template_root = ""
+enable_complete = true
