@@ -27,7 +27,7 @@ path = "/usr/local/lib/python3.10/dist-packages/"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-qpro = "^0.12.10"
+qpro = "^0.13.0"
 
 [tool.poetry.scripts]
 sub-surge = "sub_surge.main:main"
