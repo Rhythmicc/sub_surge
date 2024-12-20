@@ -61,7 +61,8 @@ def update(name: str, force: bool = False, disable_txcos: bool = False):
     pop_items = []
     for item in other_infos:
         for _id, line in enumerate(all_proxy_list):
-            if other_infos[item].strip() in line:
+            target = other_infos[item].strip()
+            if target and target in line:
                 proxy_list.remove(line)
                 all_proxy_list[_id] = (
                     f'{item}: {other_infos[item].split("=")[0].strip()} = '
