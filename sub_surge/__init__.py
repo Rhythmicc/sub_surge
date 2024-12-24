@@ -31,15 +31,15 @@ def requirePackage(
     :param not_exit: 安装后不退出
     :return: 库或模块的地址
     """
+    local_scope = {}
     try:
-        exec(f"from {pname} import {module}" if module else f"import {pname}")
+        exec((f"from {pname} import {module}" if module else f"import {pname}"), globals(), local_scope)
     except (ModuleNotFoundError, ImportError):
         if not_ask:
             return None
         if _ask(
             {
                 "type": "confirm",
-                "name": "install",
                 "message": f"""{name} require {pname + (' -> ' + module if module else '')}, confirm to install?
   {name} 依赖 {pname + (' -> ' + module if module else '')}, 是否确认安装?""",
                 "default": True,
@@ -51,7 +51,7 @@ def requirePackage(
                     True,
                 )
             if not_exit:
-                exec(f"from {pname} import {module}" if module else f"import {pname}")
+                exec((f"from {pname} import {module}" if module else f"import {pname}"), globals(), local_scope)
             else:
                 QproDefaultConsole.print(
                     QproInfoString,
@@ -63,4 +63,4 @@ def requirePackage(
         else:
             exit(-1)
     finally:
-        return eval(f"{module if module else pname}")
+        return local_scope.get(module if module else pname)
