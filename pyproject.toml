@@ -17,7 +17,7 @@ include = "sub_surge"
 user = "lianhaocheng"
 host = "localhost"
 port = 22
-path = "/opt/homebrew/lib/python3.11/site-packages/"
+path = "/Users/lianhaocheng/.local/share/uv/tools/sub-surge/lib/python3.13/site-packages/"
 
 [[tool.qpro.server_targets]]
 user = "lianhaocheng"
@@ -27,7 +27,8 @@ path = "/opt/homebrew/lib/python3.13/site-packages/"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-qpro = "^0.13.0"
+qpro = "*"
+quickstart_rhy = "*"
 
 [tool.poetry.scripts]
 sub-surge = "sub_surge.main:main"

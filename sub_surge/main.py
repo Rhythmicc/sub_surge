@@ -26,7 +26,7 @@ def update():
 
 
 @app.command()
-def update(name: str, force: bool = False, disable_txcos: bool = False):
+def update(name: str, force: bool = False, disable_txcos: bool = False, node_insert: str = ''):
     """
     更新Surge配置文件
 
@@ -51,6 +51,45 @@ def update(name: str, force: bool = False, disable_txcos: bool = False):
         return QproDefaultConsole.print(
             QproErrorString, f"下载失败, 请检查链接是否正确"
         )
+
+    if node_insert:
+        import requests
+        import base64
+        import urllib.parse
+
+        nodes = requests.get(node_insert).text
+        nodes = base64.b64decode(nodes).decode('utf-8').split('\n')
+        node_list = []
+        for node in nodes:
+            parsed_url = urllib.parse.urlparse(node)
+            protocol = parsed_url.scheme
+            host = parsed_url.hostname
+            port = parsed_url.port
+            password = parsed_url.username
+            name_encoded = parsed_url.fragment
+            name = urllib.parse.unquote(name_encoded)
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            sni = query_params.get('sni', [None])[0]
+            skip_cert_verify = 'false'
+            tfo = 'false'
+            udp_relay = 'true'
+
+            param_parts = [
+                f"password={password}"
+            ]
+            if sni:
+                param_parts.append(f"sni={sni}")
+            param_parts.append(f"skip-cert-verify={skip_cert_verify}")
+            param_parts.append(f"tfo={tfo}")
+            param_parts.append(f"udp-relay={udp_relay}")
+            params_string = ", ".join(param_parts)
+            node_list.append(
+                f"{name} = {protocol}, {host}, {port}, {params_string}"
+            )
+            QproDefaultConsole.print(
+                QproInfoString,
+                f"添加节点: {name} = {protocol}, {host}, {port}, {params_string}",
+            )
 
     with open(path, "r") as f:
         content = [i.strip() for i in f.readlines()]

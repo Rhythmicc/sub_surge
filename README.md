@@ -20,69 +20,58 @@ sub_surge --help
 注册机场时，需要实现两个函数，以下是参考实现：
 
 ```python
+import re
+
 def get_proxies_list(lines: list):
     proxy_list = []
-    index = lines.index("[Proxy]") + 1
-    while not lines[index].startswith("["):
-        if "direct" in lines[index].lower() or "Premium" in lines[index]:
-            index += 1
+
+    country_map = {
+        "Hong Kong": "香港",
+        "USA": "美国",
+        "Japan": "日本",
+        "Netherlands": "荷兰",
+        "Russia": "俄罗斯",
+        "Germany": "德国",
+        "France": "法国",
+        "Switzerland": "瑞士",
+        "UK": "英国",
+        "Bulgaria": "保加利亚",
+        "Austria": "奥地利",
+        "Ireland": "爱尔兰",
+        "Turkey": "土耳其",
+        "Italy": "意大利",
+        "Hungary": "匈牙利",
+        "Korea": "韩国",
+        "Taiwan": "台湾",
+        "Canada": "加拿大",
+        "Australia": "澳大利亚",
+        "Brazil": "巴西",
+        "India": "印度",
+        "Indonesia": "印度尼西亚",
+        "Argentina": "阿根廷",
+        "Chile": "智利",
+        "Singapore": "新加坡",
+        "Sweden": "瑞典"
+    }
+
+    pattern = re.compile('|'.join(re.escape(name) for name in country_map.keys()))
+    def replace_country_names(match):
+        return country_map[match.group(0)]
+
+    try:
+        start_index = lines.index("[Proxy]") + 1
+    except ValueError:
+        return proxy_list
+
+    for line in lines[start_index:]:
+        if line.startswith("["):
+            break
+        lower_line = line.lower()
+        if "direct" in lower_line or "premium" in lower_line:
             continue
-        if "Hong Kong" in lines[index]:
-            lines[index] = lines[index].replace("Hong Kong", "香港")
-        elif "USA" in lines[index]:
-            lines[index] = lines[index].replace("USA", "美国")
-        elif "Japan" in lines[index]:
-            lines[index] = lines[index].replace("Japan", "日本")
-        elif "Netherlands" in lines[index]:
-            lines[index] = lines[index].replace("Netherlands", "荷兰")
-        elif "Russia" in lines[index]:
-            lines[index] = lines[index].replace("Russia", "俄罗斯")
-        elif "Germany" in lines[index]:
-            lines[index] = lines[index].replace("Germany", "德国")
-        elif "France" in lines[index]:
-            lines[index] = lines[index].replace("France", "法国")
-        elif "Switzerland" in lines[index]:
-            lines[index] = lines[index].replace("Switzerland", "瑞士")
-        elif "UK" in lines[index]:
-            lines[index] = lines[index].replace("UK", "英国")
-        elif "Sweeden" in lines[index]:
-            lines[index] = lines[index].replace("Sweeden", "瑞典")
-        elif "Bulgaria" in lines[index]:
-            lines[index] = lines[index].replace("Bulgaria", "保加利亚")
-        elif "Austria" in lines[index]:
-            lines[index] = lines[index].replace("Austria", "奥地利")
-        elif "Ireland" in lines[index]:
-            lines[index] = lines[index].replace("Ireland", "爱尔兰")
-        elif "Turkey" in lines[index]:
-            lines[index] = lines[index].replace("Turkey", "土耳其")
-        elif "Italy" in lines[index]:
-            lines[index] = lines[index].replace("Italy", "意大利")
-        elif "Hungary" in lines[index]:
-            lines[index] = lines[index].replace("Hungary", "匈牙利")
-        elif "Korea" in lines[index]:
-            lines[index] = lines[index].replace("Korea", "韩国")
-        elif "Taiwan" in lines[index]:
-            lines[index] = lines[index].replace("Taiwan", "台湾")
-        elif "Canada" in lines[index]:
-            lines[index] = lines[index].replace("Canada", "加拿大")
-        elif "Australia" in lines[index]:
-            lines[index] = lines[index].replace("Australia", "澳大利亚")
-        elif "Brazil" in lines[index]:
-            lines[index] = lines[index].replace("Brazil", "巴西")
-        elif "India" in lines[index]:
-            lines[index] = lines[index].replace("India", "印度")
-        elif "Indonesia" in lines[index]:
-            lines[index] = lines[index].replace("Indonesia", "印度尼西亚")
-        elif "Argentina" in lines[index]:
-            lines[index] = lines[index].replace("Argentina", "阿根廷")
-        elif "Chile" in lines[index]:
-            lines[index] = lines[index].replace("Chile", "智利")
-        elif "Singapore" in lines[index]:
-            lines[index] = lines[index].replace("Singapore", "新加坡")
-        elif "Sweden" in lines[index]:
-            lines[index] = lines[index].replace("Sweden", "瑞典")
-        proxy_list.append(lines[index].strip())
-        index += 1
+        processed_line = pattern.sub(replace_country_names, line)
+        proxy_list.append(processed_line.strip())
+
     return proxy_list
 
 
@@ -90,7 +79,6 @@ def get_other_infos(lines: list):
     infos = {"流量": "", "重置": "", "到期": ""}
     index = lines.index("[Proxy]") + 1
     while not lines[index].startswith("["):
-        print(lines[index])
         if "G |" in lines[index]:
             infos["流量"] = lines[index].strip()
         elif "Reset" in lines[index]:
