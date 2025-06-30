@@ -25,8 +25,52 @@ def update():
     ]
 
 
+def parse_node_list_only(url):
+    import requests
+    import base64
+    import urllib.parse
+
+    node_list = []
+    nodes = requests.get(url).text
+    nodes = base64.b64decode(nodes).decode('utf-8').strip().split('\n')
+
+    for node in nodes:
+        parsed_url = urllib.parse.urlparse(node)
+        protocol = parsed_url.scheme
+        host = parsed_url.hostname
+        port = parsed_url.port
+        password = parsed_url.username
+        name_encoded = parsed_url.fragment
+        node_name = urllib.parse.unquote(name_encoded)
+        query_params = urllib.parse.parse_qs(parsed_url.query)
+        sni = query_params.get('sni', [None])[0]
+        skip_cert_verify = 'false'
+        tfo = 'false'
+        udp_relay = 'true'
+
+        param_parts = [f"password={password}"]
+        if sni:
+            param_parts.append(f"sni={sni}")
+        param_parts.append(f"skip-cert-verify={skip_cert_verify}")
+        param_parts.append(f"tfo={tfo}")
+        param_parts.append(f"udp-relay={udp_relay}")
+        params_string = ", ".join(param_parts)
+        node_list.append(
+            f"{node_name} = {protocol}, {host}, {port}, {params_string}"
+        )
+    return node_list
+
+aim_regions = {
+    "香港": "🇭🇰 香港",
+    "日本": "🇯🇵 日本",
+    "美国": "🇺🇸 美国",
+    "新加坡": "🇸🇬 狮城",
+    "英国": "🇬🇧 英国",
+    "台湾": "🇨🇳 台湾",
+}
+
 @app.command()
-def update(name: str, force: bool = False, disable_txcos: bool = False, node_insert: str = ''):
+def update(name: str, force: bool = False, disable_txcos: bool = False):
     """
     更新Surge配置文件
 
@@ -39,60 +83,27 @@ def update(name: str, force: bool = False, disable_txcos: bool = False, node_ins
     if force and os.path.exists(f"{name}.conf"):
         os.remove(f"{name}.conf")
 
-    if not (
-        path := requirePackage(
-            "QuickStart_Rhy.NetTools.NormalDL",
-            "normal_dl",
-            real_name="QuickStart_Rhy",
-        )(config.select(name)["url"], f".{name}.conf")
-    ):
-        from QuickProject import QproErrorString
+    name_conf = config.select(name)
+    if name_conf.get('nodes_list'):
+        node_list = parse_node_list_only(name_conf['url'])
+        content = '[Proxy]\n' + '\n'.join(node_list) + '\n['
+        content = content.splitlines()
+    else:
+        if not (
+            path := requirePackage(
+                "QuickStart_Rhy.NetTools.NormalDL",
+                "normal_dl",
+                real_name="QuickStart_Rhy",
+            )(name_conf["url"], f".{name}.conf")
+        ):
+            from QuickProject import QproErrorString
 
-        return QproDefaultConsole.print(
-            QproErrorString, f"下载失败, 请检查链接是否正确"
-        )
-
-    if node_insert:
-        import requests
-        import base64
-        import urllib.parse
-
-        nodes = requests.get(node_insert).text
-        nodes = base64.b64decode(nodes).decode('utf-8').split('\n')
-        node_list = []
-        for node in nodes:
-            parsed_url = urllib.parse.urlparse(node)
-            protocol = parsed_url.scheme
-            host = parsed_url.hostname
-            port = parsed_url.port
-            password = parsed_url.username
-            name_encoded = parsed_url.fragment
-            name = urllib.parse.unquote(name_encoded)
-            query_params = urllib.parse.parse_qs(parsed_url.query)
-            sni = query_params.get('sni', [None])[0]
-            skip_cert_verify = 'false'
-            tfo = 'false'
-            udp_relay = 'true'
-
-            param_parts = [
-                f"password={password}"
-            ]
-            if sni:
-                param_parts.append(f"sni={sni}")
-            param_parts.append(f"skip-cert-verify={skip_cert_verify}")
-            param_parts.append(f"tfo={tfo}")
-            param_parts.append(f"udp-relay={udp_relay}")
-            params_string = ", ".join(param_parts)
-            node_list.append(
-                f"{name} = {protocol}, {host}, {port}, {params_string}"
-            )
-            QproDefaultConsole.print(
-                QproInfoString,
-                f"添加节点: {name} = {protocol}, {host}, {port}, {params_string}",
+            return QproDefaultConsole.print(
+                QproErrorString, f"下载失败, 请检查链接是否正确"
             )
 
-    with open(path, "r") as f:
-        content = [i.strip() for i in f.readlines()]
+        with open(path, "r") as f:
+            content = [i.strip() for i in f.readlines()]
     proxy_list = requirePackage(f".airports.{name}", "get_proxies_list")(content)
     other_infos = requirePackage(f".airports.{name}", "get_other_infos")(content)
 
@@ -140,14 +151,6 @@ def update(name: str, force: bool = False, disable_txcos: bool = False, node_ins
         )
 
         regions = {}
-        aim_regions = {
-            "香港": "🇭🇰 香港",
-            "日本": "🇯🇵 日本",
-            "美国": "🇺🇸 美国",
-            "新加坡": "🇸🇬 狮城",
-            "英国": "🇬🇧 英国",
-            "台湾": "🇨🇳 台湾",
-        }
         for i in proxy_list:
             for key in aim_regions:
                 if key in i:
@@ -189,6 +192,98 @@ def update(name: str, force: bool = False, disable_txcos: bool = False, node_ins
 
         shutil.move(f".{name}.conf", f"{name}.conf")
         QproDefaultConsole.print(QproInfoString, f"更新成功: {name}.conf")
+    
+    return proxy_list
+
+
+@app.command()
+def merge():
+    from QuickProject import QproErrorString
+    names = config.get_all()
+    if not names:
+        return QproDefaultConsole.print(QproErrorString, "没有机场配置, 请先注册机场")
+    # 选择机场
+    from . import _ask
+
+    names = _ask({
+        "type": "checkbox",
+        "message": "选择要合并的机场",
+        "choices": [{"name": i, "checked": True} for i in names]
+    })
+
+    if not names:
+        return QproDefaultConsole.print(QproErrorString, "没有选择机场")
+
+    import datetime
+
+    txcos_file = config.select('merge_key')
+
+    date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    proxy_list = [
+        f'更新: {date} = trojan, example.com, 19757, password=info, sni=example.com, skip-cert-verify=true, tfo=true, udp-relay=true'
+    ]
+
+    for name in names:
+        proxy = app.real_call('update', name)
+        proxy_list.extend(proxy)
+
+    regions = {}
+    for i in proxy_list:
+        for key in aim_regions:
+            if key in i:
+                if aim_regions[key] not in regions:
+                    regions[aim_regions[key]] = []
+                regions[aim_regions[key]].append(i.split("=")[0].strip())
+                break
+    
+    total_infos = {
+        "cos_url": f"{config.select('txcos_domain')}/{txcos_file}",
+        "proxies": "\n".join(proxy_list),
+        "infos": f'更新: {date}',
+        "proxies_one_line": ",".join(
+            [i.split("=")[0].strip() for i in proxy_list[1:] if i]
+        ),
+    }
+    total_infos["regions"] = ",".join([i for i in regions])
+    total_infos["region_strategy"] = "\n".join(
+        [f"{i} = select,{i}最佳,{i}均衡,🔧 手动切换" for i in regions]
+    )
+    total_infos["region_auto"] = "\n".join(
+        [
+            f"{i}最佳 = url-test,{','.join(regions[i])},url=http://www.gstatic.com/generate_204,interval=300,tolerance=50"
+            for i in regions
+        ]
+        + [
+            f"{i}均衡 = load-balance,{','.join(regions[i])},persistent=1"
+            for i in regions
+        ]
+    )
+
+    total_infos["host"] = parse_host(
+        requirePackage(
+            "QuickStart_Rhy.NetTools.NormalDL",
+            "normal_dl",
+            real_name="QuickStart_Rhy",
+        )(
+            "https://raw.githubusercontent.com/maxiaof/github-hosts/refs/heads/master/hosts",
+            write_to_memory=True,
+        ).decode('utf-8')
+    )
+
+    from .template import conf_template
+
+    with open(f".merge.conf", "w") as f:
+        f.write(conf_template.format(**total_infos))
+
+    with QproDefaultStatus("正在上传配置文件"):
+        from QuickStart_Rhy.API.TencentCloud import TxCOS
+
+        TxCOS().upload(f".merge.conf", key=txcos_file)
+    requirePackage("QuickStart_Rhy", "remove")(f".merge.conf")
+    QproDefaultConsole.print(
+        QproInfoString,
+        f"更新成功, 链接: {config.select('txcos_domain')}/{txcos_file}",
+    )
 
 
 @app.command()
@@ -219,6 +314,13 @@ def register(name: str):
             {"type": "input", "message": "输入机场描述信息", "default": name}
         ),
         "custom_format": _ask({"type": "input", "message": "输入自定义格式化文件路径"}),
+        "nodes_list": _ask(
+            {
+                "type": "confirm",
+                "message": "是否为节点列表格式? (默认: 否)",
+                "default": False,
+            }
+        ),
     }
     if not os.path.exists(values["custom_format"]):
         from QuickProject import QproErrorString

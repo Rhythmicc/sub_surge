@@ -12,6 +12,11 @@ questions = {
         "message": "请输入订阅更新间隔 (单位: 秒)",
         "default": "3600",
     },
+    'merge_key': {
+        "type": "input",
+        "message": "请输入合并后的配置文件名 (没有则使用默认: merge.conf)",
+        "default": "merge.conf",
+    }
 }
 
 
@@ -51,5 +56,6 @@ class sub_surgeConfig:
     def get_all(self):
         res = list(self.config.keys())
         res.remove("txcos_domain")
+        res.remove("merge_key")
         res.remove("interval")
         return res

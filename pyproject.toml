@@ -17,7 +17,7 @@ include = "sub_surge"
 user = "lianhaocheng"
 host = "localhost"
 port = 22
-path = "/Users/lianhaocheng/.local/share/uv/tools/sub-surge/lib/python3.13/site-packages/"
+path = "/opt/homebrew/lib/python3.13/site-packages/"
 
 [[tool.qpro.server_targets]]
 user = "lianhaocheng"
