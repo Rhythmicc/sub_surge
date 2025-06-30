@@ -20,10 +20,10 @@ port = 22
 path = "/opt/homebrew/lib/python3.11/site-packages/"
 
 [[tool.qpro.server_targets]]
-user = ""
-host = "hc-server"
-port = 18022
-path = "/usr/local/lib/python3.10/dist-packages/"
+user = "lianhaocheng"
+host = "mini"
+port = 22
+path = "/opt/homebrew/lib/python3.13/site-packages/"
 
 [tool.poetry.dependencies]
 python = "^3.10"
