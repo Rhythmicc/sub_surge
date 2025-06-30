@@ -25,14 +25,23 @@ def update():
     ]
 
 
-def parse_node_list_only(url):
-    import requests
+def parse_node_list_only(name, url):
     import base64
     import urllib.parse
 
     node_list = []
-    nodes = requests.get(url).text
-    nodes = base64.b64decode(nodes).decode('utf-8').strip().split('\n')
+    nodes = (
+        base64.b64decode(
+            requirePackage(
+                "QuickStart_Rhy.NetTools.NormalDL",
+                "normal_dl",
+                real_name="QuickStart_Rhy",
+            )(url, name, write_to_memory=True).decode("utf-8")
+        )
+        .decode("utf-8")
+        .strip()
+        .split("\n")
+    )
 
     for node in nodes:
         parsed_url = urllib.parse.urlparse(node)
@@ -43,10 +52,10 @@ def parse_node_list_only(url):
         name_encoded = parsed_url.fragment
         node_name = urllib.parse.unquote(name_encoded)
         query_params = urllib.parse.parse_qs(parsed_url.query)
-        sni = query_params.get('sni', [None])[0]
-        skip_cert_verify = 'false'
-        tfo = 'false'
-        udp_relay = 'true'
+        sni = query_params.get("sni", [None])[0]
+        skip_cert_verify = "false"
+        tfo = "false"
+        udp_relay = "true"
 
         param_parts = [f"password={password}"]
         if sni:
@@ -55,10 +64,9 @@ def parse_node_list_only(url):
         param_parts.append(f"tfo={tfo}")
         param_parts.append(f"udp-relay={udp_relay}")
         params_string = ", ".join(param_parts)
-        node_list.append(
-            f"{node_name} = {protocol}, {host}, {port}, {params_string}"
-        )
+        node_list.append(f"{node_name} = {protocol}, {host}, {port}, {params_string}")
     return node_list
+
 
 aim_regions = {
     "香港": "🇭🇰 香港",
@@ -69,8 +77,14 @@ aim_regions = {
     "台湾": "🇨🇳 台湾",
 }
 
+
 @app.command()
-def update(name: str, force: bool = False, disable_txcos: bool = False, __list_only: bool = False):
+def update(
+    name: str,
+    force: bool = False,
+    disable_txcos: bool = False,
+    __list_only: bool = False,
+):
     """
     更新Surge配置文件
 
@@ -84,9 +98,9 @@ def update(name: str, force: bool = False, disable_txcos: bool = False, __list_o
         os.remove(f"{name}.conf")
 
     name_conf = config.select(name)
-    if name_conf.get('nodes_list'):
-        node_list = parse_node_list_only(name_conf['url'])
-        content = '[Proxy]\n' + '\n'.join(node_list) + '\n['
+    if name_conf.get("nodes_list"):
+        node_list = parse_node_list_only(name, name_conf["url"])
+        content = "[Proxy]\n" + "\n".join(node_list) + "\n["
         content = content.splitlines()
     else:
         if not (
@@ -94,7 +108,7 @@ def update(name: str, force: bool = False, disable_txcos: bool = False, __list_o
                 "QuickStart_Rhy.NetTools.NormalDL",
                 "normal_dl",
                 real_name="QuickStart_Rhy",
-            )(name_conf["url"], f".{name}.conf")
+            )(name_conf["url"], name)
         ):
             from QuickProject import QproErrorString
 
@@ -149,7 +163,9 @@ def update(name: str, force: bool = False, disable_txcos: bool = False, __list_o
             )(
                 "https://raw.githubusercontent.com/maxiaof/github-hosts/refs/heads/master/hosts",
                 write_to_memory=True,
-            ).decode('utf-8')
+            ).decode(
+                "utf-8"
+            )
         )
 
         regions = {}
@@ -194,39 +210,30 @@ def update(name: str, force: bool = False, disable_txcos: bool = False, __list_o
 
         shutil.move(f".{name}.conf", f"{name}.conf")
         QproDefaultConsole.print(QproInfoString, f"更新成功: {name}.conf")
-    
+
     return proxy_list
 
 
 @app.command()
 def merge():
     from QuickProject import QproErrorString
+
     names = config.get_all()
     if not names:
         return QproDefaultConsole.print(QproErrorString, "没有机场配置, 请先注册机场")
-    # 选择机场
-    from . import _ask
 
-    names = _ask({
-        "type": "checkbox",
-        "message": "选择要合并的机场",
-        "choices": [{"name": i, "checked": True} for i in names]
-    })
-
-    if not names:
-        return QproDefaultConsole.print(QproErrorString, "没有选择机场")
-
+    names = config.select("merge_airports")
     import datetime
 
-    txcos_file = config.select('merge_key')
+    txcos_file = config.select("merge_key")
 
     date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     proxy_list = [
-        f'更新: {date} = trojan, example.com, 19757, password=info, sni=example.com, skip-cert-verify=true, tfo=true, udp-relay=true'
+        f"更新: {date} = trojan, example.com, 19757, password=info, sni=example.com, skip-cert-verify=true, tfo=true, udp-relay=true"
     ]
 
     for name in names:
-        proxy = app.real_call('update', name, __list_only=True)
+        proxy = app.real_call("update", name, __list_only=True)
         proxy_list.extend(proxy)
 
     regions = {}
@@ -237,11 +244,11 @@ def merge():
                     regions[aim_regions[key]] = []
                 regions[aim_regions[key]].append(i.split("=")[0].strip())
                 break
-    
+
     total_infos = {
         "cos_url": f"{config.select('txcos_domain')}/{txcos_file}",
         "proxies": "\n".join(proxy_list),
-        "infos": f'更新: {date}',
+        "infos": f"更新: {date}",
         "proxies_one_line": ",".join(
             [i.split("=")[0].strip() for i in proxy_list[1:] if i]
         ),
@@ -269,7 +276,9 @@ def merge():
         )(
             "https://raw.githubusercontent.com/maxiaof/github-hosts/refs/heads/master/hosts",
             write_to_memory=True,
-        ).decode('utf-8')
+        ).decode(
+            "utf-8"
+        )
     )
 
     from .template import conf_template
