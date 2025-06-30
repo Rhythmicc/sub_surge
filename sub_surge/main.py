@@ -70,7 +70,7 @@ aim_regions = {
 }
 
 @app.command()
-def update(name: str, force: bool = False, disable_txcos: bool = False):
+def update(name: str, force: bool = False, disable_txcos: bool = False, __list_only: bool = False):
     """
     更新Surge配置文件
 
@@ -105,6 +105,8 @@ def update(name: str, force: bool = False, disable_txcos: bool = False):
         with open(path, "r") as f:
             content = [i.strip() for i in f.readlines()]
     proxy_list = requirePackage(f".airports.{name}", "get_proxies_list")(content)
+    if __list_only:
+        return proxy_list
     other_infos = requirePackage(f".airports.{name}", "get_other_infos")(content)
 
     all_proxy_list = proxy_list.copy()
@@ -224,7 +226,7 @@ def merge():
     ]
 
     for name in names:
-        proxy = app.real_call('update', name)
+        proxy = app.real_call('update', name, __list_only=True)
         proxy_list.extend(proxy)
 
     regions = {}
