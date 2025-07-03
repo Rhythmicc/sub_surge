@@ -17,7 +17,6 @@ allow-wifi-access = true
 wifi-access-http-port = 7891
 wifi-access-socks5-port = 7890
 
-
 [Proxy]
 DIRECT = direct
 {proxies}
@@ -26,24 +25,31 @@ DIRECT = direct
 📒 机场信息 = select,{infos}
 🚀 节点选择 = select,DIRECT,🔧 手动切换,{regions}
 🔧 手动切换 = select,DIRECT,{proxies_one_line}
-🌍 国外媒体 = select,🚀 节点选择,🎯 全球直连,{regions}
-📲 电报信息 = select,🚀 节点选择,🎯 全球直连,{proxies_one_line}
-Ⓜ️ 微软服务 = select,🚀 节点选择,🎯 全球直连,{proxies_one_line}
-🍎 苹果服务 = select,🚀 节点选择,🎯 全球直连,{proxies_one_line}
-📢 谷歌FCM = select,🚀 节点选择,🎯 全球直连,{proxies_one_line}
+🌍 国外媒体 = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
+📲 电报信息 = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
+🍎 苹果服务 = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
+💬 Ai平台 = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
+📢 谷歌FCM = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
+📹 油管视频 = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
+📺 哔哩哔哩 = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
+Ⓜ️ 微软云盘 = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
+🎮 游戏平台 = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
+🌏 国内媒体 = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
+🎥 奈飞视频 = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
+Ⓜ️ 微软服务 = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
+📺 巴哈姆特 = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
+Ⓜ️ 微软Bing = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
 🎯 全球直连 = select,DIRECT,🚀 节点选择
 🛑 全球拦截 = select,REJECT,🎯 全球直连
 🍃 应用净化 = select,REJECT,🎯 全球直连
-🐟 漏网之鱼 = select,🚀 节点选择,🎯 全球直连,{proxies_one_line}
+🐟 漏网之鱼 = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
 ———————配置——————— = select,DIRECT
 {region_strategy}
 ———————自动——————— = select,DIRECT
 {region_auto}
 
 [Rule]
-DOMAIN-SUFFIX,youtube.com,🚀 节点选择
 DOMAIN-SUFFIX,jp,🇯🇵 日本
-RULE-SET,https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TikTok/TikTok.list,🇺🇸 美国,update-interval=86400
 RULE-SET,https://raw.githubusercontent.com/Rhythmicc/ACL4SSR/master/Clash/us.list,🇺🇸 美国,update-interval=86400
 RULE-SET,https://raw.githubusercontent.com/Rhythmicc/ACL4SSR/master/Clash/direct.list,DIRECT,update-interval=86400
 RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/LocalAreaNetwork.list,🎯 全球直连,update-interval=86400
@@ -60,6 +66,24 @@ RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ProxyMed
 RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ProxyLite.list,🚀 节点选择,update-interval=86400
 RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaDomain.list,🎯 全球直连,update-interval=86400
 RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaCompanyIp.list,🎯 全球直连,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Bing.list,Ⓜ️ 微软Bing,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/OneDrive.list,Ⓜ️ 微软云盘,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/AI.list,💬 Ai平台,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/OpenAi.list,💬 Ai平台,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/NetEaseMusic.list,🎯 全球直连,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Epic.list,🎮 游戏平台,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Origin.list,🎮 游戏平台,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Sony.list,🎮 游戏平台,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Steam.list,🎮 游戏平台,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Nintendo.list,🎮 游戏平台,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/YouTube.list,📹 油管视频,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Netflix.list,🎥 奈飞视频,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Bahamut.list,📺 巴哈姆特,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/BilibiliHMT.list,📺 哔哩哔哩,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Bilibili.list,📺 哔哩哔哩,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaMedia.list,🌏 国内媒体,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ProxyGFWlist.list,🚀 节点选择,update-interval=86400
+RULE-SET,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Download.list,🎯 全球直连,update-interval=86400
 GEOIP,CN,🎯 全球直连
 FINAL,🐟 漏网之鱼
 

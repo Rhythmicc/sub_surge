@@ -98,6 +98,7 @@ def update(
         os.remove(f"{name}.conf")
 
     name_conf = config.select(name)
+    path = None
     if name_conf.get("nodes_list"):
         node_list = parse_node_list_only(name, name_conf["url"])
         content = "[Proxy]\n" + "\n".join(node_list) + "\n["
@@ -119,8 +120,6 @@ def update(
         with open(path, "r") as f:
             content = [i.strip() for i in f.readlines()]
     proxy_list = requirePackage(f".airports.{name}", "get_proxies_list")(content)
-    if __list_only:
-        return proxy_list
     other_infos = requirePackage(f".airports.{name}", "get_other_infos")(content)
 
     all_proxy_list = proxy_list.copy()
@@ -136,6 +135,10 @@ def update(
                 )
                 pop_items.append(item)
                 break
+    if __list_only:
+        if path:
+            os.remove(path)
+        return proxy_list
     for item in other_infos:
         if item in pop_items:
             continue
@@ -186,7 +189,7 @@ def update(
                 for i in regions
             ]
             + [
-                f"{i}均衡 = load-balance,{','.join(regions[i])},persistent=1"
+                f"{i}均衡 = smart,{','.join(regions[i])},persistent=1"
                 for i in regions
             ]
         )
@@ -255,7 +258,7 @@ def merge():
     }
     total_infos["regions"] = ",".join([i for i in regions])
     total_infos["region_strategy"] = "\n".join(
-        [f"{i} = select,{i}最佳,{i}均衡,🔧 手动切换" for i in regions]
+        [f"{i} = select,{i}最佳,{i}智能,🔧 手动切换" for i in regions]
     )
     total_infos["region_auto"] = "\n".join(
         [
@@ -263,7 +266,7 @@ def merge():
             for i in regions
         ]
         + [
-            f"{i}均衡 = load-balance,{','.join(regions[i])},persistent=1"
+            f"{i}智能 = smart,{','.join(regions[i])},persistent=1"
             for i in regions
         ]
     )
