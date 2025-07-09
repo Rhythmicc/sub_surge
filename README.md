@@ -1,6 +1,6 @@
 # sub-surge
 
-帮你在本地生成Surge的配置表（需要 Surge v5及以上版本）：
+帮你在本地生成Surge的配置表，并上传到腾讯云对象存储（需要 Surge v5及以上版本）。该工具依赖于俺的另外两个项目 [qs](https://github.com/Rhythmicc/qs) 和 [Qpro](https://github.com/Rhythmicc/QuickProject)。
 
 1. 支持热门地区（香港、台湾、日本、美国、英国、新加坡）的最佳和智能策略。
 2. 自动配置GitHub Host，避免DNS污染。
@@ -14,7 +14,7 @@ pip3 install git+https://github.com/Rhythmicc/sub_surge.git -U
 ## 使用 / Usage
 
 ```shell
-sub-surge # 此命令会展示一个帮助菜单
+sub-surge # 此命令会展示一个帮助菜单，初次运行会自动引导配置
 # 具体使用方式
 sub-surge <子命令> [子命令的参数]
 ```
