@@ -1,8 +1,8 @@
 # sub_surge
 
-帮你在本地生成Surge的配置表：
+帮你在本地生成Surge的配置表（需要 Surge v5及以上版本）：
 
-1. 支持热门地区（香港、台湾、日本、美国、英国、新加坡）的最佳和负载均衡策略。
+1. 支持热门地区（香港、台湾、日本、美国、英国、新加坡）的最佳和智能策略。
 2. 自动配置GitHub Host，避免DNS污染。
 
 ## Install
@@ -14,10 +14,17 @@ pip3 install git+https://github.com/Rhythmicc/sub_surge.git -U
 ## Usage
 
 ```shell
-sub_surge --help
+sub_surge
 ```
 
-注册机场时，需要实现两个函数，以下是参考实现：
+注册机场时，需要创建个py文件，并实现如下两个函数:
+
+1. `get_proxies_list`函数用于格式化节点名称，标记节点的国家/地区，处理后的节点列表会利用`main.py`中的`aim_regions`字典进行识别;
+2. `get_other_infos`函数用于获取其他信息（如流量、重置时间、到期时间等）;
+
+在当前版本中，`其他信息`会被自动去除，并使用[模组](https://github.com/Rabbit-Spec/Surge/tree/Master/Module/Panel/Sub-info)来获取机场基本信息。
+
+以下是两个函数的示例实现，可以直接用于Nexitally：
 
 ```python
 import re

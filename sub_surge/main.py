@@ -1,6 +1,15 @@
 from QuickProject.Commander import Commander
 from . import *
 
+aim_regions = {
+    "香港": "🇭🇰 香港",
+    "日本": "🇯🇵 日本",
+    "美国": "🇺🇸 美国",
+    "新加坡": "🇸🇬 狮城",
+    "英国": "🇬🇧 英国",
+    "台湾": "🇨🇳 台湾",
+}
+
 app = Commander(name)
 
 
@@ -67,15 +76,6 @@ def parse_node_list_only(name, url):
         node_list.append(f"{node_name} = {protocol}, {host}, {port}, {params_string}")
     return node_list
 
-
-aim_regions = {
-    "香港": "🇭🇰 香港",
-    "日本": "🇯🇵 日本",
-    "美国": "🇺🇸 美国",
-    "新加坡": "🇸🇬 狮城",
-    "英国": "🇬🇧 英国",
-    "台湾": "🇨🇳 台湾",
-}
 
 def ask_and_save(name, key):
     airports_questions = {
