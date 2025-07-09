@@ -22,6 +22,7 @@ sub-surge <子命令> [子命令的参数]
 sub-surge 支持使用 [Amazon Q](https://aws.amazon.com/cn/q/) 进行命令行自动补全，运行`sub-surge complete`后将生成补全脚本并应用于 Amazon Q。
 
 1. 添加机场 `sub-surge register <机场名>` (配置表存储在`~/.sub_surge_config.json`中):
+
    需要创建个py文件，并实现如下两个函数:
    1. `get_proxies_list`函数用于格式化节点名称，标记节点的国家/地区，处理后的节点列表会利用`main.py`中的`aim_regions`字典进行识别;
    2. `get_other_infos`函数用于获取其他信息（如流量、重置时间、到期时间等）;
