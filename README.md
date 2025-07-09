@@ -19,7 +19,7 @@ sub-surge # 此命令会展示一个帮助菜单
 sub-surge <子命令> [子命令的参数]
 ```
 
-sub-surge 支持使用 Amazon Q 进行命令行自动补全，运行`sub-surge complete`后将生成补全脚本并应用于 Amazon Q。
+sub-surge 支持使用 [Amazon Q](https://aws.amazon.com/cn/q/) 进行命令行自动补全，运行`sub-surge complete`后将生成补全脚本并应用于 Amazon Q。
 
 注册机场时，需要创建个py文件，并实现如下两个函数:
 
