@@ -77,6 +77,26 @@ aim_regions = {
     "台湾": "🇨🇳 台湾",
 }
 
+def ask_and_save(name, key):
+    airports_questions = {
+        'reset_day': {
+            "type": "input",
+            "message": "请输入重置周期 (单位: 天, 默认: 30)",
+            "default": "30",
+        },
+    }
+
+    from . import _ask
+    name_conf = config.select(name)
+    val = name_conf.get(key)
+    if not val:
+        val = _ask(airports_questions.get(key, {"message": "请输入值", "type": "input"}))
+    if not val:
+        return None
+    name_conf[key] = val
+    config.update(name, name_conf)
+    return val
+
 
 @app.command()
 def update(
@@ -139,23 +159,29 @@ def update(
         if path:
             os.remove(path)
         return proxy_list
-    for item in other_infos:
-        if item in pop_items:
-            continue
-        all_proxy_list.insert(
-            len(pop_items),
-            f"{item}: {other_infos[item]} = trojan, example.com, 19757, password=info, sni=example.com, skip-cert-verify=true, tfo=true, udp-relay=true",
-        )
+    
     with open(f".{name}.conf", "w") as f:
+        # encode url
+        from .template import conf_template, traffic_module_template, update_interval_template
+        import urllib.parse
+        import random
+        info_url = urllib.parse.quote(name_conf["url"], safe="")
+        color = f"#{random.randint(0, 0xFFFFFF):06X}"
+
         infos = {
             "cos_url": f"{config.select('txcos_domain')}/{config.select(name)['key']}",
             "proxies": "\n".join(all_proxy_list),
-            "infos": ",".join(
-                [f'{i}: {other_infos[i].split("=")[0].strip()}' for i in other_infos]
-            ),
             "proxies_one_line": ",".join(
                 [i.split("=")[0].strip() for i in proxy_list if i]
             ),
+            "module_panel": traffic_module_template["panel"].format(name=name),
+            "module_script": traffic_module_template["script"].format(
+                name=name,
+                url=info_url,
+                reset=ask_and_save(name, "reset_day"),
+                color=color,
+            ),
+            "update_interval": update_interval_template
         }
 
         infos["host"] = parse_host(
@@ -193,8 +219,6 @@ def update(
                 for i in regions
             ]
         )
-
-        from .template import conf_template
 
         f.write(conf_template.format(**infos))
 
@@ -247,14 +271,29 @@ def merge():
                     regions[aim_regions[key]] = []
                 regions[aim_regions[key]].append(i.split("=")[0].strip())
                 break
+    
+    import random
+    import urllib.parse
+    from .template import conf_template, traffic_module_template, update_interval_template
 
     total_infos = {
         "cos_url": f"{config.select('txcos_domain')}/{txcos_file}",
         "proxies": "\n".join(proxy_list),
-        "infos": f"更新: {date}",
         "proxies_one_line": ",".join(
             [i.split("=")[0].strip() for i in proxy_list[1:] if i]
         ),
+        "module_panel": '\n'.join(
+            [traffic_module_template["panel"].format(name=name) for name in names]
+        ),
+        "module_script": '\n'.join(
+            [traffic_module_template["script"].format(
+                name=name,
+                url=urllib.parse.quote(config.select(name)["url"], safe=""),
+                reset=ask_and_save(name, "reset_day"),
+                color=f"#{random.randint(0, 0xFFFFFF):06X}",
+            ) for name in names]
+        ),
+        "update_interval": update_interval_template,
     }
     total_infos["regions"] = ",".join([i for i in regions])
     total_infos["region_strategy"] = "\n".join(
@@ -283,8 +322,6 @@ def merge():
             "utf-8"
         )
     )
-
-    from .template import conf_template
 
     with open(f".merge.conf", "w") as f:
         f.write(conf_template.format(**total_infos))

@@ -21,6 +21,11 @@ questions = {
         "type": "input",
         "message": "请输入要合并的机场 (多个用逗号分隔)",
         "default": "",
+    },
+    'reset_day': {
+        "type": "input",
+        "message": "请输入重置周期 (单位: 天, 默认: 30)",
+        "default": "30",
     }
 }
 

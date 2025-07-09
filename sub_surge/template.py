@@ -1,5 +1,11 @@
 from . import config
 
+traffic_module_template = {
+    'panel': '{name}=script-name={name},update-interval=3600',
+    'script': '{name}=type=generic,timeout=10,script-path=https://raw.githubusercontent.com/Rabbit-Spec/Surge/Master/Module/Panel/Sub-info/Moore/Sub-info.js,script-update-interval=0,argument=url={url}&reset_day={reset}&title={name}&icon=waveform&color={color}'
+}
+update_interval_template = config.select('interval')
+
 conf_template = (
     "#!MANAGED-CONFIG {cos_url}"
     + f" interval={config.select('interval')} strict=false"
@@ -17,12 +23,19 @@ allow-wifi-access = true
 wifi-access-http-port = 7891
 wifi-access-socks5-port = 7890
 
+[Panel]
+{module_panel}
+stream-all = script-name=stream-all, title="流媒体解锁检测", content="请刷新面板", update-interval={update_interval}
+
+[Script]
+{module_script}
+stream-all = type=generic, timeout=15, script-path=https://raw.githubusercontent.com/Rabbit-Spec/Surge/Master/Module/Panel/Stream-All/Moore/Stream-All.js
+
 [Proxy]
 DIRECT = direct
 {proxies}
 
 [Proxy Group]
-📒 机场信息 = select,{infos}
 🚀 节点选择 = select,DIRECT,🔧 手动切换,{regions}
 🔧 手动切换 = select,DIRECT,{proxies_one_line}
 🌍 国外媒体 = select,🚀 节点选择,🎯 全球直连,🔧 手动切换,{regions}
