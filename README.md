@@ -1,17 +1,17 @@
-# sub_surge
+# sub-surge
 
 帮你在本地生成Surge的配置表（需要 Surge v5及以上版本）：
 
 1. 支持热门地区（香港、台湾、日本、美国、英国、新加坡）的最佳和智能策略。
 2. 自动配置GitHub Host，避免DNS污染。
 
-## Install
+## 安装 / Install
 
 ```shell
 pip3 install git+https://github.com/Rhythmicc/sub_surge.git -U
 ```
 
-## Usage
+## 使用 / Usage
 
 ```shell
 sub-surge # 此命令会展示一个帮助菜单
