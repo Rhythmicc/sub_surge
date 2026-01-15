@@ -24,7 +24,7 @@ path = "/opt/homebrew/lib/python3.13/site-packages/"
 user = "lianhaocheng"
 host = "mini"
 port = 22
-path = "/opt/homebrew/lib/python3.13/site-packages/"
+path = "/opt/homebrew/lib/python3.14/site-packages/"
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -36,6 +36,7 @@ uvicorn = "^0.23.0"
 pydantic = "^2.0.0"
 pyotp = "^2.9.0"
 qrcode = {extras = ["pil"], version = "^7.4.2"}
+cos-python-sdk-v5 = "*"
 
 [tool.poetry.scripts]
 sub-surge = "sub_surge.main:main"

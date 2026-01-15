@@ -12,6 +12,7 @@ import logging
 import asyncio
 from datetime import datetime
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 from .config_manager import ConfigManager
 from .config_schema import AirportConfig, GlobalConfig
@@ -464,9 +465,15 @@ async def update_airport_subscription(name: str, token: str = Depends(verify_tok
         raise HTTPException(status_code=404, detail="机场不存在")
     
     try:
-        # 这里调用原有的更新逻辑
+        # 在线程池中执行阻塞的更新逻辑
         from .updater import update_airport
-        result = update_airport(airport, config_manager.get_global_config())
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None, 
+            update_airport, 
+            airport, 
+            config_manager.get_global_config()
+        )
         return {"message": "订阅更新成功", "result": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"订阅更新失败: {str(e)}")
@@ -483,7 +490,14 @@ async def merge_subscriptions(request: dict, token: str = Depends(verify_token_f
     
     try:
         from .updater import merge_airports
-        result = merge_airports(airports_to_merge, config_manager)
+        # 在线程池中执行阻塞的合并逻辑
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            merge_airports,
+            airports_to_merge,
+            config_manager
+        )
         return {"message": "订阅合并成功", "result": result}
     except Exception as e:
         # print trace
@@ -554,11 +568,14 @@ async def preview_subscription(request: dict, token: str = Depends(verify_token_
         raise HTTPException(status_code=400, detail="缺少URL参数")
     
     try:
-        from QuickStart_Rhy.NetTools.NormalDL import normal_dl
+        import httpx
         import base64
         
         # 下载订阅内容
-        raw_content = normal_dl(url, "temp_preview", write_to_memory=True)
+        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+            response = client.get(url)
+            response.raise_for_status()
+            raw_content = response.content
         
         if not raw_content:
             raise HTTPException(status_code=400, detail="无法下载订阅内容")
@@ -822,7 +839,14 @@ async def auto_update_task_func():
                     airport = config_manager.get_airport(airport_name)
                     if airport:
                         logger.info(f"更新机场: {airport_name}")
-                        result = update_airport(airport, global_config)
+                        # 在线程池中执行阻塞的更新操作
+                        loop = asyncio.get_event_loop()
+                        result = await loop.run_in_executor(
+                            None,
+                            update_airport,
+                            airport,
+                            global_config
+                        )
                         if result.get('success'):
                             logger.info(f"机场 {airport_name} 更新成功")
                         else:
@@ -834,7 +858,14 @@ async def auto_update_task_func():
             if global_config.merge_airports and len(global_config.merge_airports) > 0:
                 try:
                     logger.info(f"合并订阅: {global_config.merge_airports}")
-                    result = merge_airports(global_config.merge_airports, config_manager)
+                    # 在线程池中执行阻塞的合并操作
+                    loop = asyncio.get_event_loop()
+                    result = await loop.run_in_executor(
+                        None,
+                        merge_airports,
+                        global_config.merge_airports,
+                        config_manager
+                    )
                     if result.get('success'):
                         logger.info("订阅合并成功")
                     else:

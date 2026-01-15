@@ -38,8 +38,11 @@ def analyze_subscription(url: str = None, use_ai: bool = True, content: str = No
             raw_content = content.encode('utf-8') if isinstance(content, str) else content
         elif url:
             # 下载订阅内容
-            from QuickStart_Rhy.NetTools.NormalDL import normal_dl
-            raw_content = normal_dl(url, "temp_analyze", write_to_memory=True)
+            import httpx
+            with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+                response = client.get(url)
+                response.raise_for_status()
+                raw_content = response.content
         else:
             return {
                 "error": "必须提供url或content参数",

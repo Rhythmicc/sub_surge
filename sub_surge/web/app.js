@@ -928,9 +928,7 @@ document.getElementById('add-airport-form').addEventListener('submit', async (e)
             // 更新模式：调用 PUT API
             response = await fetch(`${API_BASE}/api/airports/${editingAirportName}`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: getAuthHeaders(),
                 body: JSON.stringify(data)
             });
             successMessage = '机场配置已更新！';
@@ -938,9 +936,7 @@ document.getElementById('add-airport-form').addEventListener('submit', async (e)
             // 添加模式：调用 POST API
             response = await fetch(`${API_BASE}/api/airports`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: getAuthHeaders(),
                 body: JSON.stringify(data)
             });
             successMessage = '机场添加成功！';
@@ -976,7 +972,8 @@ document.getElementById('add-airport-form').addEventListener('submit', async (e)
 async function updateAirport(name) {
     try {
         const response = await fetch(`${API_BASE}/api/airports/${name}/update`, {
-            method: 'POST'
+            method: 'POST',
+            headers: getAuthHeaders()
         });
         
         if (response.ok) {
@@ -1035,7 +1032,8 @@ async function deleteAirport(name) {
     
     try {
         const response = await fetch(`${API_BASE}/api/airports/${name}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: getAuthHeaders()
         });
         
         if (response.ok) {
@@ -1215,9 +1213,7 @@ document.getElementById('merge-btn').addEventListener('click', async () => {
     try {
         const response = await fetch(`${API_BASE}/api/merge`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: getAuthHeaders(),
             body: JSON.stringify({ airports: selectedAirports })
         });
         
@@ -1273,9 +1269,7 @@ document.getElementById('import-btn').addEventListener('click', async () => {
         
         const response = await fetch(`${API_BASE}/api/config/import`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: getAuthHeaders(),
             body: JSON.stringify(data)
         });
         

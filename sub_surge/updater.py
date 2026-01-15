@@ -11,20 +11,19 @@ from .config_schema import AirportConfig, GlobalConfig
 from .parser import parse_with_config
 from .template import conf_template, traffic_module_template
 
+from QuickProject import QproDefaultConsole
+
 
 def download_subscription(url: str, name: str) -> str:
     """下载订阅内容"""
     try:
-        from QuickStart_Rhy.NetTools.NormalDL import normal_dl
+        import httpx
         
-        path = normal_dl(url, name)
-        if not path:
-            raise Exception("下载失败")
+        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+            response = client.get(url)
+            response.raise_for_status()
+            content = response.text
         
-        with open(path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        os.remove(path)
         return content
     except Exception as e:
         raise Exception(f"下载订阅失败: {str(e)}")
@@ -33,9 +32,13 @@ def download_subscription(url: str, name: str) -> str:
 def parse_node_list(url: str, name: str) -> List[str]:
     """解析节点列表格式的订阅"""
     try:
-        from QuickStart_Rhy.NetTools.NormalDL import normal_dl
+        import httpx
         
-        content = normal_dl(url, name, write_to_memory=True)
+        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+            response = client.get(url)
+            response.raise_for_status()
+            content = response.content
+        
         decoded = base64.b64decode(content).decode('utf-8')
         nodes = decoded.strip().split('\n')
         
@@ -143,12 +146,18 @@ def update_airport(
                     break
         
         # 下载hosts
-        from QuickStart_Rhy.NetTools.NormalDL import normal_dl
-        hosts_content = normal_dl(
-            "https://raw.githubusercontent.com/maxiaof/github-hosts/refs/heads/master/hosts",
-            write_to_memory=True
-        ).decode('utf-8')
-        host_config = parse_host_list(hosts_content)
+        import httpx
+        try:
+            with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+                response = client.get(
+                    "https://raw.githubusercontent.com/maxiaof/github-hosts/refs/heads/master/hosts"
+                )
+                response.raise_for_status()
+                hosts_content = response.text
+            host_config = parse_host_list(hosts_content)
+        except Exception as e:
+            # 如果下载失败，使用空配置
+            host_config = ""
         
         # 构建配置参数
         config_params = {
@@ -215,6 +224,9 @@ def update_airport(
         }
     
     except Exception as e:
+        QproDefaultConsole.print(f"更新机场 {airport_config.name} 失败: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             "success": False,
             "error": str(e)
@@ -285,12 +297,18 @@ def merge_airports(
                     break
         
         # 生成合并配置
-        from QuickStart_Rhy.NetTools.NormalDL import normal_dl
-        hosts_content = normal_dl(
-            "https://raw.githubusercontent.com/maxiaof/github-hosts/refs/heads/master/hosts",
-            write_to_memory=True
-        ).decode('utf-8')
-        host_config = parse_host_list(hosts_content)
+        import httpx
+        try:
+            with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+                response = client.get(
+                    "https://raw.githubusercontent.com/maxiaof/github-hosts/refs/heads/master/hosts"
+                )
+                response.raise_for_status()
+                hosts_content = response.text
+            host_config = parse_host_list(hosts_content)
+        except Exception as e:
+            # 如果下载失败，使用空配置
+            host_config = ""
         
         # 生成面板配置
         panel_configs = []
