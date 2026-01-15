@@ -442,6 +442,11 @@ function createAirportCard(airport) {
         ? `${globalConfig.txcos_domain.replace(/\/$/, '')}/${airport.key}`
         : '';
     
+    // Clash 链接
+    const clashUrl = airport.enable_clash && airport.clash_key && globalConfig.txcos_domain
+        ? `${globalConfig.txcos_domain.replace(/\/$/, '')}/${airport.clash_key}`
+        : null;
+    
     card.innerHTML = `
         <input type="checkbox" class="airport-select" value="${airport.name}" onchange="updateBatchActionState()">
         <h3 style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
@@ -449,10 +454,15 @@ function createAirportCard(airport) {
                 <span class="status-dot" id="status-${airport.name}" title="未检测"></span>
                 ${airport.name}
             </span>
-            ${txcosUrl ? `<button class="btn btn-sm" onclick="copyToClipboard('${txcosUrl}')" style="padding: 4px 8px; font-size: 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;" title="复制腾讯云链接">📋 复制</button>` : ''}
+            <div style="display: flex; gap: 6px;">
+                ${txcosUrl ? `<button class="btn btn-sm" onclick="copyToClipboard('${txcosUrl}')" style="padding: 4px 8px; font-size: 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;" title="复制 Surge 链接">📋 Surge</button>` : ''}
+                ${clashUrl ? `<button class="btn btn-sm" onclick="copyToClipboard('${clashUrl}')" style="padding: 4px 8px; font-size: 12px; background: #f093fb; color: white; border: none; border-radius: 4px; cursor: pointer;" title="复制 Clash 链接">📋 Clash</button>` : ''}
+                ${txcosUrl && !clashUrl ? `<button class="btn btn-sm" onclick="convertToClash('${airport.name}')" style="padding: 4px 8px; font-size: 12px; background: #48c774; color: white; border: none; border-radius: 4px; cursor: pointer;" title="生成 Clash 订阅">🔄 转Clash</button>` : ''}
+            </div>
         </h3>
         <p style="font-size: 12px; color: #888;"><strong>订阅链接:</strong> <span style="display: inline-block; max-width: 75%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;" title="${airport.url}">${airport.url}</span></p>
-        ${txcosUrl ? `<p style="font-size: 12px; color: #888;"><strong>腾讯云链接:</strong> <span style="display: inline-block; max-width: 75%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;" title="${txcosUrl}">${txcosUrl}</span></p>` : '<p style="font-size: 12px; color: #ccc; font-style: italic;">（未配置腾讯云域名）</p>'}
+        ${txcosUrl ? `<p style="font-size: 12px; color: #888;"><strong>Surge链接:</strong> <span style="display: inline-block; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;" title="${txcosUrl}">${txcosUrl}</span></p>` : '<p style="font-size: 12px; color: #ccc; font-style: italic;">（未配置腾讯云域名）</p>'}
+        ${clashUrl ? `<p style="font-size: 12px; color: #888;"><strong>Clash链接:</strong> <span style="display: inline-block; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;" title="${clashUrl}">${clashUrl}</span></p>` : ''}
         <p><strong>存储路径:</strong> ${airport.key}</p>
         <p><strong>重置周期:</strong> ${airport.reset_day}天</p>
         <div class="actions">
@@ -707,7 +717,8 @@ document.getElementById('analyze-content-btn').addEventListener('click', async (
         const response = await fetch(`${API_BASE}/api/analyze`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
             },
             body: JSON.stringify({ content })
         });
@@ -754,7 +765,8 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
         const response = await fetch(`${API_BASE}/api/analyze`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
             },
             body: JSON.stringify({ url })
         });
@@ -897,7 +909,8 @@ document.getElementById('add-airport-form').addEventListener('submit', async (e)
         url: formData.get('url'),
         key: formData.get('key'),
         reset_day: parseInt(formData.get('reset_day')) || 30,
-        is_node_list: formData.get('is_node_list') === 'on'
+        is_node_list: formData.get('is_node_list') === 'on',
+        enable_clash: formData.get('enable_clash') === 'on'
     };
     
     // 处理排除关键词
@@ -1012,6 +1025,7 @@ function editAirport(name) {
     document.getElementById('key').value = airport.key;
     document.getElementById('reset_day').value = airport.reset_day;
     document.getElementById('is_node_list').checked = airport.is_node_list;
+    document.getElementById('enable_clash').checked = airport.enable_clash || false;
     
     if (airport.parser_config.exclude_keywords) {
         document.getElementById('exclude_keywords').value = 
@@ -1037,7 +1051,7 @@ async function deleteAirport(name) {
         });
         
         if (response.ok) {
-            showAlert(`机场 ${name} 已删除`);
+            showAlert('机场删除成功');
             loadAirports();
         } else {
             const error = await response.json();
@@ -1045,6 +1059,33 @@ async function deleteAirport(name) {
         }
     } catch (error) {
         showAlert('删除失败: ' + error.message, 'error');
+    }
+}
+
+// 转换为 Clash 配置
+async function convertToClash(name) {
+    if (!confirm(`确定要为机场 "${name}" 生成 Clash 配置吗？`)) {
+        return;
+    }
+    
+    try {
+        showAlert('正在生成 Clash 配置，请稍候...', 'info');
+        
+        const response = await fetch(`${API_BASE}/api/airports/${name}/convert-clash`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            showAlert(`Clash 配置生成成功！\n\nSurge: ${result.surge_url}\n\nClash: ${result.clash_url}`, 'success');
+            loadAirports();  // 重新加载以显示 Clash 链接
+        } else {
+            const error = await response.json();
+            showAlert('转换失败: ' + error.detail, 'error');
+        }
+    } catch (error) {
+        showAlert('转换失败: ' + error.message, 'error');
     }
 }
 

@@ -489,6 +489,73 @@ async def update_airport_subscription(name: str, token: str = Depends(verify_tok
         raise HTTPException(status_code=500, detail=f"订阅更新失败: {str(e)}")
 
 
+@app.post("/api/airports/{name}/convert-clash")
+async def convert_to_clash(name: str, token: str = Depends(verify_token_from_request)):
+    """
+    将指定机场的 Surge 配置转换为 Clash 格式
+    
+    返回 Clash 配置的下载链接
+    """
+    airport = config_manager.get_airport(name)
+    if not airport:
+        raise HTTPException(status_code=404, detail="机场不存在")
+    
+    global_config = config_manager.get_global_config()
+    
+    # 检查腾讯云配置
+    if not global_config.txcos_domain:
+        raise HTTPException(status_code=400, detail="未配置腾讯云对象存储")
+    
+    try:
+        import httpx
+        from .parser import generate_clash_config
+        
+        # 下载 Surge 配置
+        surge_url = f"{global_config.txcos_domain}/{airport.key}"
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(surge_url)
+            response.raise_for_status()
+            surge_content = response.text
+        
+        # 转换为 Clash 格式
+        clash_content = generate_clash_config(surge_content, include_rules=True)
+        
+        # 保存并上传
+        import os
+        clash_temp_file = f".{airport.name}_clash.yaml"
+        with open(clash_temp_file, 'w', encoding='utf-8') as f:
+            f.write(clash_content)
+        
+        # 上传到腾讯云
+        from QuickStart_Rhy.API.TencentCloud import TxCOS
+        clash_key = airport.clash_key or f"{airport.key.rsplit('.', 1)[0]}_clash.yaml"
+        
+        def upload_clash():
+            TxCOS().upload(clash_temp_file, key=clash_key)
+        
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, upload_clash)
+        os.remove(clash_temp_file)
+        
+        clash_url = f"{global_config.txcos_domain}/{clash_key}"
+        
+        # 更新机场配置，保存 Clash 链接
+        airport.enable_clash = True
+        airport.clash_key = clash_key
+        config_manager.add_airport(airport)
+        
+        return {
+            "message": "转换成功",
+            "clash_url": clash_url,
+            "surge_url": surge_url
+        }
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"转换失败: {str(e)}")
+
+
 @app.post("/api/merge")
 async def merge_subscriptions(request: dict, token: str = Depends(verify_token_from_request)):
     """合并订阅"""

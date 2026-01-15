@@ -77,6 +77,16 @@ class AirportConfig(BaseModel):
         description="是否为节点列表格式（需要base64解码）"
     )
     
+    # Clash 配置
+    enable_clash: bool = Field(
+        default=False,
+        description="是否生成 Clash 配置"
+    )
+    clash_key: Optional[str] = Field(
+        None,
+        description="Clash 配置的腾讯云COS存储路径"
+    )
+    
     # 解析配置
     parser_config: ProxyParserConfig = Field(
         default_factory=ProxyParserConfig,

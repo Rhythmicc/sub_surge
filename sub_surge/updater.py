@@ -205,6 +205,36 @@ def update_airport(
         with open(temp_file, 'w', encoding='utf-8') as f:
             f.write(conf_content)
         
+        # 如果启用 Clash，生成 Clash 配置
+        clash_result_url = None
+        if airport_config.enable_clash:
+            from .parser import generate_clash_config
+            
+            clash_content = generate_clash_config(conf_content, include_rules=True)
+            
+            # 保存临时 Clash 配置文件
+            clash_temp_file = f".{airport_config.name}_clash.yaml"
+            with open(clash_temp_file, 'w', encoding='utf-8') as f:
+                f.write(clash_content)
+            
+            # 上传 Clash 配置
+            if not disable_upload and global_config.txcos_domain:
+                try:
+                    from QuickStart_Rhy.API.TencentCloud import TxCOS
+                    clash_key = airport_config.clash_key or f"{airport_config.key.rsplit('.', 1)[0]}_clash.yaml"
+                    TxCOS().upload(clash_temp_file, key=clash_key)
+                    os.remove(clash_temp_file)
+                    clash_result_url = f"{global_config.txcos_domain}/{clash_key}"
+                except Exception as e:
+                    print(f"上传 Clash 配置到COS失败: {e}")
+                    import shutil
+                    shutil.move(clash_temp_file, f"{airport_config.name}_clash.yaml")
+                    clash_result_url = f"{airport_config.name}_clash.yaml"
+            else:
+                import shutil
+                shutil.move(clash_temp_file, f"{airport_config.name}_clash.yaml")
+                clash_result_url = f"{airport_config.name}_clash.yaml"
+        
         # 上传到腾讯云COS
         if not disable_upload and global_config.txcos_domain:
             try:
@@ -228,6 +258,7 @@ def update_airport(
         return {
             "success": True,
             "url": result_url,
+            "clash_url": clash_result_url,
             "proxy_count": len(proxy_list),
             "regions": list(regions.keys()),
             "infos": other_infos
