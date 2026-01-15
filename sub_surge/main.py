@@ -1,453 +1,380 @@
 from QuickProject.Commander import Commander
-from . import *
+from QuickProject import QproDefaultConsole, QproInfoString, QproErrorString, _ask
+import sys
+import os
+from pathlib import Path
 
-aim_regions = {
-    "香港": "🇭🇰 香港",
-    "日本": "🇯🇵 日本",
-    "美国": "🇺🇸 美国",
-    "新加坡": "🇸🇬 狮城",
-    "英国": "🇬🇧 英国",
-    "台湾": "🇨🇳 台湾",
-}
 
+name = "sub-surge"
 app = Commander(name)
 
 
-def parse_host(content: str) -> str:
-    host = ""
-    for line in content.splitlines():
-        line = line.strip()
-        if line.startswith("#"):
-            continue
-        if not line.strip():
-            continue
-        line = line.split()
-        host += f"{line[0]} = {line[1]}\n"
-    return host
+def get_user_config_path():
+    """获取用户配置文件路径"""
+    custom_dir = os.environ.get('SUB_SURGE_CONFIG_DIR')
+    if custom_dir:
+        config_dir = Path(custom_dir)
+    else:
+        config_dir = Path.home() / ".sub-surge"
+    config_dir.mkdir(exist_ok=True)
+    return config_dir / "user_config.json"
 
 
-@app.custom_complete("name")
-def update():
-    return [
-        {"name": i, "icon": "✈️", "description": config.select(i)["show_name"]}
-        for i in config.get_all()
-    ]
+def load_user_config():
+    """加载用户配置"""
+    import json
+    config_path = get_user_config_path()
+    if config_path.exists():
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
 
 
-def parse_node_list_only(name, url):
-    import base64
-    import urllib.parse
-
-    node_list = []
-    nodes = (
-        base64.b64decode(
-            requirePackage(
-                "QuickStart_Rhy.NetTools.NormalDL",
-                "normal_dl",
-                real_name="QuickStart_Rhy",
-            )(url, name, write_to_memory=True).decode("utf-8")
-        )
-        .decode("utf-8")
-        .strip()
-        .split("\n")
-    )
-
-    for node in nodes:
-        parsed_url = urllib.parse.urlparse(node)
-        protocol = parsed_url.scheme
-        host = parsed_url.hostname
-        port = parsed_url.port
-        password = parsed_url.username
-        name_encoded = parsed_url.fragment
-        node_name = urllib.parse.unquote(name_encoded)
-        query_params = urllib.parse.parse_qs(parsed_url.query)
-        sni = query_params.get("sni", [None])[0]
-        skip_cert_verify = "false"
-        tfo = "false"
-        udp_relay = "true"
-
-        param_parts = [f"password={password}"]
-        if sni:
-            param_parts.append(f"sni={sni}")
-        param_parts.append(f"skip-cert-verify={skip_cert_verify}")
-        param_parts.append(f"tfo={tfo}")
-        param_parts.append(f"udp-relay={udp_relay}")
-        params_string = ", ".join(param_parts)
-        node_list.append(f"{node_name} = {protocol}, {host}, {port}, {params_string}")
-    return node_list
+def save_user_config(config):
+    """保存用户配置"""
+    import json
+    config_path = get_user_config_path()
+    with open(config_path, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
 
 
-def ask_and_save(name, key):
-    airports_questions = {
-        'reset_day': {
+def check_first_run():
+    """检查是否首次运行，如果是则引导用户配置"""
+    config_dir = Path.home() / ".sub-surge"
+    config_file = config_dir / "config.json"
+    first_run_marker = config_dir / ".initialized"
+    
+    if first_run_marker.exists():
+        return
+    
+    QproDefaultConsole.print(QproInfoString, "欢迎使用 sub-surge！")
+    QproDefaultConsole.print(QproInfoString, "检测到首次运行，需要进行初始化配置。")
+    
+    # 创建配置目录
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "logs").mkdir(exist_ok=True)
+    
+    QproDefaultConsole.print(QproInfoString, f"配置目录已创建: {config_dir}")
+    QproDefaultConsole.print(QproInfoString, f"配置文件路径: {config_file}")
+    QproDefaultConsole.print(QproInfoString, f"日志目录: {config_dir / 'logs'}")
+    
+    # 询问是否需要修改配置目录
+    change_dir = _ask({
+        "type": "confirm",
+        "message": "是否需要修改配置目录位置？（默认: ~/.sub-surge）",
+        "default": False
+    })
+    
+    if change_dir:
+        custom_dir = _ask({
             "type": "input",
-            "message": "请输入重置周期 (单位: 天, 默认: 30)",
-            "default": "30",
-        },
-    }
-
-    from . import _ask
-    name_conf = config.select(name)
-    val = name_conf.get(key)
-    if not val:
-        val = _ask(airports_questions.get(key, {"message": "请输入值", "type": "input"}))
-    if not val:
-        return None
-    name_conf[key] = val
-    config.update(name, name_conf)
-    return val
+            "message": "请输入自定义配置目录的完整路径："
+        })
+        
+        if custom_dir:
+            custom_path = Path(custom_dir).expanduser()
+            if not custom_path.exists():
+                custom_path.mkdir(parents=True, exist_ok=True)
+            
+            # 设置环境变量供后续使用
+            os.environ['SUB_SURGE_CONFIG_DIR'] = str(custom_path)
+            QproDefaultConsole.print(QproInfoString, f"已设置配置目录为: {custom_path}")
+            QproDefaultConsole.print(QproInfoString, "注意：后续运行需要设置环境变量 SUB_SURGE_CONFIG_DIR")
+    
+    # 配置默认端口
+    default_port = _ask({
+        "type": "input",
+        "message": "请输入 Web 服务默认端口（直接回车使用 8000）：",
+        "default": "8000"
+    })
+    
+    try:
+        port = int(default_port)
+        if 1 <= port <= 65535:
+            user_config = load_user_config()
+            user_config['default_port'] = port
+            save_user_config(user_config)
+            QproDefaultConsole.print(QproInfoString, f"已设置默认端口为: {port}")
+        else:
+            QproDefaultConsole.print(QproErrorString, "端口号无效，将使用默认值 8000")
+    except ValueError:
+        QproDefaultConsole.print(QproErrorString, "端口号格式错误，将使用默认值 8000")
+    
+    # 创建标记文件
+    first_run_marker.touch()
+    
+    QproDefaultConsole.print(QproInfoString, "初始化完成！现在启动服务...")
 
 
 @app.command()
-def update(
-    name: str,
-    force: bool = False,
-    disable_txcos: bool = False,
-    __list_only: bool = False,
-):
+def serve(host: str = "0.0.0.0", port: int = -1):
     """
-    更新Surge配置文件
-
-    :param name: 机场名称
-    :param force: 是否强制更新
-    """
-    if os.path.exists(f".{name}.conf"):
-        os.remove(f".{name}.conf")
-
-    if force and os.path.exists(f"{name}.conf"):
-        os.remove(f"{name}.conf")
-
-    name_conf = config.select(name)
-    path = None
-    if name_conf.get("nodes_list"):
-        node_list = parse_node_list_only(name, name_conf["url"])
-        content = "[Proxy]\n" + "\n".join(node_list) + "\n["
-        content = content.splitlines()
-    else:
-        if not (
-            path := requirePackage(
-                "QuickStart_Rhy.NetTools.NormalDL",
-                "normal_dl",
-                real_name="QuickStart_Rhy",
-            )(name_conf["url"], name)
-        ):
-            from QuickProject import QproErrorString
-
-            return QproDefaultConsole.print(
-                QproErrorString, f"下载失败, 请检查链接是否正确"
-            )
-
-        with open(path, "r") as f:
-            content = [i.strip() for i in f.readlines()]
-    proxy_list = requirePackage(f".airports.{name}", "get_proxies_list")(content)
-    other_infos = requirePackage(f".airports.{name}", "get_other_infos")(content)
-
-    all_proxy_list = proxy_list.copy()
-    pop_items = []
-    for item in other_infos:
-        for _id, line in enumerate(all_proxy_list):
-            target = other_infos[item].strip()
-            if target and target in line:
-                proxy_list.remove(line)
-                all_proxy_list[_id] = (
-                    f'{item}: {other_infos[item].split("=")[0].strip()} = '
-                    + "=".join(line.split("=")[1:]).strip()
-                )
-                pop_items.append(item)
-                break
-    if __list_only:
-        if path:
-            os.remove(path)
-        return proxy_list
+    启动Web管理界面
     
-    with open(f".{name}.conf", "w") as f:
-        # encode url
-        from .template import conf_template, traffic_module_template, update_interval_template
-        import urllib.parse
-        import random
-        info_url = urllib.parse.quote(name_conf["url"], safe="")
-        color = f"#{random.randint(0, 0xFFFFFF):06X}"
+    :param host: 监听地址
+    :param port: 监听端口（不指定则使用配置的默认端口）
+    """
+    # 检查首次运行
+    check_first_run()
+    
+    # 如果没有指定端口，尝试从配置读取
+    if port == -1:
+        user_config = load_user_config()
+        port = user_config.get('default_port', 8000)
+    
+    QproDefaultConsole.print(QproInfoString, f"启动Web管理界面: http://{host}:{port}")
+    
+    try:
+        from .api import start_server
+        start_server(host, port)
+    except KeyboardInterrupt:
+        QproDefaultConsole.print(QproInfoString, "服务已停止")
+    except Exception as e:
+        QproDefaultConsole.print(QproErrorString, f"启动失败: {e}")
 
-        infos = {
-            "cos_url": f"{config.select('txcos_domain')}/{config.select(name)['key']}",
-            "proxies": "\n".join(all_proxy_list),
-            "proxies_one_line": ",".join(
-                [i.split("=")[0].strip() for i in proxy_list if i]
-            ),
-            "module_panel": traffic_module_template["panel"].format(name=name),
-            "module_script": traffic_module_template["script"].format(
-                name=name,
-                url=info_url,
-                reset=ask_and_save(name, "reset_day"),
-                color=color,
-            ),
-            "update_interval": update_interval_template
-        }
 
-        infos["host"] = parse_host(
-            requirePackage(
-                "QuickStart_Rhy.NetTools.NormalDL",
-                "normal_dl",
-                real_name="QuickStart_Rhy",
-            )(
-                "https://raw.githubusercontent.com/maxiaof/github-hosts/refs/heads/master/hosts",
-                write_to_memory=True,
-            ).decode(
-                "utf-8"
-            )
-        )
-
-        regions = {}
-        for i in proxy_list:
-            for key in aim_regions:
-                if key in i:
-                    if aim_regions[key] not in regions:
-                        regions[aim_regions[key]] = []
-                    regions[aim_regions[key]].append(i.split("=")[0].strip())
-                    break
-        infos["regions"] = ",".join([i for i in regions])
-        infos["region_strategy"] = "\n".join(
-            [f"{i} = select,{i}最佳,{i}均衡,🔧 手动切换" for i in regions]
-        )
-        infos["region_auto"] = "\n".join(
-            [
-                f"{i}最佳 = url-test,{','.join(regions[i])},url=http://www.gstatic.com/generate_204,interval=300,tolerance=50"
-                for i in regions
-            ]
-            + [
-                f"{i}均衡 = smart,{','.join(regions[i])},persistent=1"
-                for i in regions
-            ]
-        )
-
-        f.write(conf_template.format(**infos))
-
-    if not disable_txcos and config.select("txcos_domain"):
-        with QproDefaultStatus("正在上传配置文件"):
-            from QuickStart_Rhy.API.TencentCloud import TxCOS
-
-            TxCOS().upload(f".{name}.conf", key=config.select(name)["key"])
-        requirePackage("QuickStart_Rhy", "remove")(f".{name}.conf")
+@app.command()
+def update(name: str, local: bool = False):
+    """
+    更新机场订阅
+    
+    :param name: 机场名称
+    :param local: 只保存到本地，不上传到云端
+    """
+    from .config_manager import ConfigManager
+    from .updater import update_airport
+    
+    config_manager = ConfigManager()
+    airport = config_manager.get_airport(name)
+    
+    if not airport:
+        QproDefaultConsole.print(QproErrorString, f"机场 {name} 不存在")
+        return
+    
+    QproDefaultConsole.print(QproInfoString, f"正在更新 {airport.name}...")
+    
+    global_config = config_manager.get_global_config()
+    result = update_airport(airport, global_config, disable_upload=local)
+    
+    if result.get('success'):
         QproDefaultConsole.print(
             QproInfoString,
-            f"更新成功, 链接: {config.select('txcos_domain')}/{config.select(name)['key']}",
+            f"更新成功！\n"
+            f"  节点数量: {result.get('proxy_count')}\n"
+            f"  区域: {', '.join(result.get('regions', []))}\n"
+            f"  链接: {result.get('url')}"
         )
     else:
-        import shutil
-
-        shutil.move(f".{name}.conf", f"{name}.conf")
-        QproDefaultConsole.print(QproInfoString, f"更新成功: {name}.conf")
-
-    return proxy_list
+        QproDefaultConsole.print(QproErrorString, f"更新失败: {result.get('error')}")
 
 
 @app.command()
 def merge():
-    from QuickProject import QproErrorString
-
-    names = config.get_all()
-    if not names:
-        return QproDefaultConsole.print(QproErrorString, "没有机场配置, 请先注册机场")
-
-    names = config.select("merge_airports")
-    import datetime
-
-    txcos_file = config.select("merge_key")
-
-    date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    proxy_list = [
-        f"更新: {date} = trojan, example.com, 19757, password=info, sni=example.com, skip-cert-verify=true, tfo=true, udp-relay=true"
-    ]
-
-    for name in names:
-        proxy = app.real_call("update", name, __list_only=True)
-        proxy_list.extend(proxy)
-
-    regions = {}
-    for i in proxy_list:
-        for key in aim_regions:
-            if key in i:
-                if aim_regions[key] not in regions:
-                    regions[aim_regions[key]] = []
-                regions[aim_regions[key]].append(i.split("=")[0].strip())
-                break
+    """合并多个机场配置"""
+    from .config_manager import ConfigManager
+    from .updater import merge_airports
     
-    import random
-    import urllib.parse
-    from .template import conf_template, traffic_module_template, update_interval_template
-
-    total_infos = {
-        "cos_url": f"{config.select('txcos_domain')}/{txcos_file}",
-        "proxies": "\n".join(proxy_list),
-        "proxies_one_line": ",".join(
-            [i.split("=")[0].strip() for i in proxy_list[1:] if i]
-        ),
-        "module_panel": '\n'.join(
-            [traffic_module_template["panel"].format(name=name) for name in names]
-        ),
-        "module_script": '\n'.join(
-            [traffic_module_template["script"].format(
-                name=name,
-                url=urllib.parse.quote(config.select(name)["url"], safe=""),
-                reset=ask_and_save(name, "reset_day"),
-                color=f"#{random.randint(0, 0xFFFFFF):06X}",
-            ) for name in names]
-        ),
-        "update_interval": update_interval_template,
-    }
-    total_infos["regions"] = ",".join([i for i in regions])
-    total_infos["region_strategy"] = "\n".join(
-        [f"{i} = select,{i}最佳,{i}智能,🔧 手动切换" for i in regions]
-    )
-    total_infos["region_auto"] = "\n".join(
-        [
-            f"{i}最佳 = url-test,{','.join(regions[i])},url=http://www.gstatic.com/generate_204,interval=300,tolerance=50"
-            for i in regions
-        ]
-        + [
-            f"{i}智能 = smart,{','.join(regions[i])},persistent=1"
-            for i in regions
-        ]
-    )
-
-    total_infos["host"] = parse_host(
-        requirePackage(
-            "QuickStart_Rhy.NetTools.NormalDL",
-            "normal_dl",
-            real_name="QuickStart_Rhy",
-        )(
-            "https://raw.githubusercontent.com/maxiaof/github-hosts/refs/heads/master/hosts",
-            write_to_memory=True,
-        ).decode(
-            "utf-8"
+    config_manager = ConfigManager()
+    global_config = config_manager.get_global_config()
+    
+    if not global_config.merge_airports:
+        QproDefaultConsole.print(QproErrorString, "未配置要合并的机场，请先在配置中设置")
+        return
+    
+    QproDefaultConsole.print(QproInfoString, f"正在合并机场: {', '.join(global_config.merge_airports)}")
+    
+    result = merge_airports(global_config.merge_airports, config_manager)
+    
+    if result.get('success'):
+        QproDefaultConsole.print(
+            QproInfoString,
+            f"合并成功！\n"
+            f"  机场数量: {result.get('airport_count')}\n"
+            f"  节点数量: {result.get('proxy_count')}\n"
+            f"  区域: {', '.join(result.get('regions', []))}\n"
+            f"  链接: {result.get('url')}"
         )
-    )
-
-    with open(f".merge.conf", "w") as f:
-        f.write(conf_template.format(**total_infos))
-
-    with QproDefaultStatus("正在上传配置文件"):
-        from QuickStart_Rhy.API.TencentCloud import TxCOS
-
-        TxCOS().upload(f".merge.conf", key=txcos_file)
-    requirePackage("QuickStart_Rhy", "remove")(f".merge.conf")
-    QproDefaultConsole.print(
-        QproInfoString,
-        f"更新成功, 链接: {config.select('txcos_domain')}/{txcos_file}",
-    )
-
-
-@app.command()
-def register(name: str):
-    """
-    添加机场
-
-    :param name: 机场名
-    """
-    from . import _ask
-
-    cur_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "airports")
-    if not os.path.exists(cur_path):
-        os.mkdir(cur_path)
-    airports = os.listdir(cur_path)
-
-    if (name in airports or config.select(name)) and _ask(
-        {"type": "confirm", "message": "此机场已注册, 是否覆盖?", "default": False}
-    ):
-        remove = requirePackage("QuickStart_Rhy", "remove")
-        remove(os.path.join(airports, f"{name}.py"))
-        config.update(name, None)
-
-    values = {
-        "url": _ask({"type": "input", "message": "输入机场订阅链接"}),
-        "key": _ask({"type": "input", "message": "输入腾讯云对应存储位置"}),
-        "show_name": _ask(
-            {"type": "input", "message": "输入机场描述信息", "default": name}
-        ),
-        "custom_format": _ask({"type": "input", "message": "输入自定义格式化文件路径"}),
-        "nodes_list": _ask(
-            {
-                "type": "confirm",
-                "message": "是否为节点列表格式? (默认: 否)",
-                "default": False,
-            }
-        ),
-    }
-    if not os.path.exists(values["custom_format"]):
-        from QuickProject import QproErrorString
-
-        return QproDefaultConsole.print(
-            QproErrorString, "自定义格式化文件不存在, 请重新输入"
-        )
-
-    values["custom_format"] = os.path.abspath(values["custom_format"])
-    import shutil
-
-    shutil.copy(values["custom_format"], os.path.join(cur_path, f"{name}.py"))
-    values.pop("custom_format")
-
-    config.update(name, values)
-    QproDefaultConsole.print(QproInfoString, "注册成功")
-
-
-@app.command()
-def unregister(name: str):
-    """
-    删除机场
-
-    :param name: 机场名
-    """
-    from . import _ask
-
-    cur_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "airports")
-    if config.select(name) and _ask(
-        {"type": "confirm", "message": "是否删除此机场?", "default": False}
-    ):
-        requirePackage("QuickStart_Rhy", "remove")(os.path.join(cur_path, f"{name}.py"))
-        config.update(name, None)
-        QproDefaultConsole.print(QproInfoString, "删除成功")
-
-
-@app.custom_complete("airport")
-def check():
-    return [
-        {"name": i, "icon": "✈️", "description": config.select(i)["show_name"]}
-        for i in config.get_all()
-    ]
-
-
-@app.command()
-def check(airport: str, key2: str = "", val: str = ""):
-    """
-    检查配置
-
-    :param airport: 机场名
-    :param key2: 键
-    :param val: 值
-    """
-    if key2:
-        config[airport][key2] = val
     else:
-        QproDefaultConsole.print(config.select(airport))
+        QproDefaultConsole.print(QproErrorString, f"合并失败: {result.get('error')}")
 
 
 @app.command()
-def upgrade():
+def list_airports():
+    """列出所有机场"""
+    from .config_manager import ConfigManager
+    
+    config_manager = ConfigManager()
+    airports = config_manager.list_airports()
+    
+    if not airports:
+        QproDefaultConsole.print(QproInfoString, "暂无机场配置")
+        return
+    
+    QproDefaultConsole.print(QproInfoString, f"共有 {len(airports)} 个机场:\n")
+    
+    for name in airports:
+        airport = config_manager.get_airport(name)
+        print(f"  ✈️  {airport.name}")
+        print(f"      订阅: {airport.url[:60]}...")
+        print(f"      存储: {airport.key}")
+        print()
+
+
+@app.command()
+def add(
+    name: str,
+    url: str,
+    key: str,
+    template: str = "generic",
+    reset_day: int = 30
+):
     """
-    更新
+    添加机场配置
+    
+    :param name: 机场名称
+    :param url: 订阅链接
+    :param key: 存储路径
+    :param template: 模板类型 (generic/nexitaly)
+    :param reset_day: 重置周期（天）
     """
-    with QproDefaultConsole.status('正在更新 "QuickStart_Rhy"'):
-        external_exec(
-            f"{user_pip} install git+https://github.com/Rhythmicc/sub_surge.git -U",
-            True,
-        )
+    from .config_manager import ConfigManager
+    
+    config_manager = ConfigManager()
+    
+    if config_manager.get_airport(name):
+        QproDefaultConsole.print(QproErrorString, f"机场 {name} 已存在")
+        return
+    
+    airport = config_manager.create_airport_from_template(
+        name=name,
+        url=url,
+        key=key,
+        template=template
+    )
+    
+    if airport:
+        QproDefaultConsole.print(QproInfoString, f"机场 {name} 添加成功")
+    else:
+        QproDefaultConsole.print(QproErrorString, "添加失败")
+
+
+@app.command()
+def remove(name: str):
+    """
+    删除机场配置
+    
+    :param name: 机场名称
+    """
+    from .config_manager import ConfigManager
+    from . import _ask
+    
+    config_manager = ConfigManager()
+    
+    if not config_manager.get_airport(name):
+        QproDefaultConsole.print(QproErrorString, f"机场 {name} 不存在")
+        return
+    
+    if _ask({"type": "confirm", "message": f"确定要删除机场 {name} 吗？", "default": False}):
+        if config_manager.remove_airport(name):
+            QproDefaultConsole.print(QproInfoString, f"机场 {name} 已删除")
+        else:
+            QproDefaultConsole.print(QproErrorString, "删除失败")
+
+
+@app.command()
+def config(key: str = None, value: str = None):
+    """
+    查看或修改全局配置
+    
+    :param key: 配置键
+    :param value: 配置值
+    """
+    from .config_manager import ConfigManager
+    import json
+    
+    config_manager = ConfigManager()
+    global_config = config_manager.get_global_config()
+    
+    if key is None:
+        # 显示所有配置
+        QproDefaultConsole.print(QproInfoString, "全局配置:")
+        print(json.dumps(global_config.dict(), indent=2, ensure_ascii=False))
+        return
+    
+    if value is None:
+        # 显示指定配置
+        if hasattr(global_config, key):
+            print(f"{key}: {getattr(global_config, key)}")
+        else:
+            QproDefaultConsole.print(QproErrorString, f"配置项 {key} 不存在")
+        return
+    
+    # 修改配置
+    if config_manager.update_global_config(**{key: value}):
+        QproDefaultConsole.print(QproInfoString, f"配置 {key} 已更新为 {value}")
+    else:
+        QproDefaultConsole.print(QproErrorString, "配置更新失败")
+
+
+@app.command()
+def export(path: str = "sub-surge-config.json"):
+    """
+    导出配置到文件
+    
+    :param path: 导出文件路径
+    """
+    from .config_manager import ConfigManager
+    
+    config_manager = ConfigManager()
+    
+    if config_manager.export_config(path):
+        QproDefaultConsole.print(QproInfoString, f"配置已导出到: {path}")
+    else:
+        QproDefaultConsole.print(QproErrorString, "导出失败")
+
+
+@app.command()
+def import_config(path: str):
+    """
+    从文件导入配置
+    
+    :param path: 导入文件路径
+    """
+    from .config_manager import ConfigManager
+    
+    config_manager = ConfigManager()
+    
+    if config_manager.import_config(path):
+        QproDefaultConsole.print(QproInfoString, f"配置已从 {path} 导入")
+    else:
+        QproDefaultConsole.print(QproErrorString, "导入失败")
+
+
+@app.command()
+def info(name: str):
+    """
+    查看机场详细信息
+    
+    :param name: 机场名称
+    """
+    from .config_manager import ConfigManager
+    import json
+    
+    config_manager = ConfigManager()
+    airport = config_manager.get_airport(name)
+    
+    if not airport:
+        QproDefaultConsole.print(QproErrorString, f"机场 {name} 不存在")
+        return
+    
+    QproDefaultConsole.print(QproInfoString, f"机场信息: {airport.name}\n")
+    print(json.dumps(airport.dict(), indent=2, ensure_ascii=False))
 
 
 def main():
-    """
-    注册为全局命令时, 默认采用main函数作为命令入口, 请勿将此函数用作它途.
-    When registering as a global command, default to main function as the command entry, do not use it as another way.
-    """
     app()
 
 

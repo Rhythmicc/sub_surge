@@ -1,0 +1,4 @@
+recursive-include sub_surge/web *
+recursive-include sub_surge *.py
+include README.md
+include ecosystem.config.js

@@ -1,14 +1,11 @@
-from . import config
-
 traffic_module_template = {
-    'panel': '{name}=script-name={name},update-interval=3600',
+    'panel': '{name}=script-name={name},update-interval={update_interval}',
     'script': '{name}=type=generic,timeout=10,script-path=https://raw.githubusercontent.com/Rabbit-Spec/Surge/Master/Module/Panel/Sub-info/Moore/Sub-info.js,script-update-interval=0,argument=url={url}&reset_day={reset}&title={name}&icon=waveform&color={color}'
 }
-update_interval_template = config.select('interval')
 
 conf_template = (
     "#!MANAGED-CONFIG {cos_url}"
-    + f" interval={config.select('interval')} strict=false"
+    + " interval={update_interval} strict=false"
     + """
 [General]
 loglevel = notify
@@ -19,9 +16,6 @@ socks5-listen = 127.0.0.1:7890
 test-timeout = 5
 bypass-tun = 192.168.0.0/16,10.0.0.0/8,172.16.0.0/12
 dns-server = system, 119.29.29.29, 223.5.5.5, 8.8.8.8
-allow-wifi-access = true
-wifi-access-http-port = 7891
-wifi-access-socks5-port = 7890
 
 [Panel]
 {module_panel}

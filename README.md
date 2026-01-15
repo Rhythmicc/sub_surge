@@ -1,116 +1,124 @@
-# sub-surge
+# Sub-Surge
 
-帮你在本地生成Surge的配置表，并上传到腾讯云对象存储（需要 Surge v5及以上版本）。该工具依赖于俺的另外两个项目 [qs](https://github.com/Rhythmicc/qs) 和 [Qpro](https://github.com/Rhythmicc/QuickProject)。
+<div align="center">
+  <p><strong>Config-driven Surge Subscription Manager with Web UI</strong></p>
+  <p>智能、高效的 Surge 订阅配置管理工具</p>
+</div>
 
-1. 支持热门地区（香港、台湾、日本、美国、英国、新加坡）的最佳和智能策略。
-2. 自动配置GitHub Host，避免DNS污染。
+Sub-Surge 是一个功能强大的 Surge 订阅管理工具，提供现代化的 Web 界面，支持多机场管理、智能配置分析、订阅合并、健康检查以及自动更新。
 
-## 安装 / Install
+## ✨ 主要功能
 
-```shell
-pip3 install git+https://github.com/Rhythmicc/sub_surge.git -U
+- **🖥 Web 管理界面**：直观的现代化 UI，轻松管理所有订阅。
+- **🤖 AI 智能分析**：接入 Openrouter，分析订阅链接，识别节点特征，生成配置模板。
+- **🔄 自动更新**：支持后台定时任务，自动更新并同步订阅配置。
+- **🔗 订阅合并**：支持将多个机场订阅合并为一个 Surge 配置，实现负载均衡或故障转移。
+- **⚡️ 健康检查**：内置节点连通性检测，实时掌握节点状态。
+- **📝 日志系统**：完整的操作日志记录，支持前端直接查看运行状态。
+- **☁️ 腾讯云 COS 集成**：配置文件自动上传至对象存储，方便多端同步。
+- **⚙️ 灵活部署**：支持 PM2 进程管理，支持自定义端口和配置路径。
+
+## 📦 安装
+
+```bash
+pip3 install git+https://github.com/Rhythmicc/sub_surge.git -U [--break-system-packages]
 ```
 
-## 使用 / Usage
+## 🚀 快速开始
 
-```shell
-sub-surge # 此命令会展示一个帮助菜单，初次运行会自动引导配置
-# 具体使用方式
-sub-surge <子命令> [子命令的参数]
+### 1. 启动服务
+
+安装完成后，直接运行以下命令启动 Web 服务：
+
+```bash
+sub-surge serve
 ```
 
-sub-surge 支持使用 [Amazon Q](https://aws.amazon.com/cn/q/) 进行命令行自动补全，运行`sub-surge complete`后将生成补全脚本并应用于 Amazon Q。
+如果是首次运行，程序会引导你进行初始化配置：
+- 选择配置存储目录（默认 `~/.sub-surge`）
+- 设置 Web 服务默认端口（默认 `8000`）
 
-1. 添加机场 `sub-surge register <机场名>` (配置表存储在`~/.sub_surge_config.json`中):
+### 2. 访问界面
 
-   这里需要提前创建个py文件，并实现如下两个函数:
-   1. `get_proxies_list`函数用于格式化节点名称，标记节点的国家/地区，处理后的节点列表会利用`main.py`中的`aim_regions`字典进行识别;
-   2. `get_other_infos`函数用于获取`其他信息`（如流量、重置时间、到期时间等），在当前版本中，`其他信息`会被自动去除，并使用[模组](https://github.com/Rabbit-Spec/Surge/tree/Master/Module/Panel/Sub-info)来获取机场基本信息，所以也可以用它来实现节点过滤的功能。
+打开浏览器访问：`http://localhost:8000`（或你设置的端口）
 
-    以下是两个函数的示例实现，可以直接用于Nexitally：
+### 3. 开始使用
 
-    ```python
-    import re
+1. **添加订阅**：输入订阅链接，使用「智能分析」自动生成配置。
+2. **管理节点**：在「机场列表」中查看、更新或删除订阅。
+3. **合并配置**：勾选多个机场，点击「合并订阅」生成聚合配置。
+4. **获取链接**：点击卡片上的复制按钮，获取 Surge 托管配置链接。
 
-    def get_proxies_list(lines: list):
-        proxy_list = []
+## 🛠 进阶配置与部署
 
-        country_map = {
-            "Hong Kong": "香港",
-            "USA": "美国",
-            "Japan": "日本",
-            "Netherlands": "荷兰",
-            "Russia": "俄罗斯",
-            "Germany": "德国",
-            "France": "法国",
-            "Switzerland": "瑞士",
-            "UK": "英国",
-            "Bulgaria": "保加利亚",
-            "Austria": "奥地利",
-            "Ireland": "爱尔兰",
-            "Turkey": "土耳其",
-            "Italy": "意大利",
-            "Hungary": "匈牙利",
-            "Korea": "韩国",
-            "Taiwan": "台湾",
-            "Canada": "加拿大",
-            "Australia": "澳大利亚",
-            "Brazil": "巴西",
-            "India": "印度",
-            "Indonesia": "印度尼西亚",
-            "Argentina": "阿根廷",
-            "Chile": "智利",
-            "Singapore": "新加坡",
-            "Sweden": "瑞典"
-        }
+### 环境变量
 
-        pattern = re.compile('|'.join(re.escape(name) for name in country_map.keys()))
-        def replace_country_names(match):
-            return country_map[match.group(0)]
+你可以通过环境变量自定义配置目录（适合 Docker 或特殊部署环境）：
 
-        try:
-            start_index = lines.index("[Proxy]") + 1
-        except ValueError:
-            return proxy_list
+```bash
+export SUB_SURGE_CONFIG_DIR="/path/to/config"
+sub-surge serve
+```
 
-        for line in lines[start_index:]:
-            if line.startswith("["):
-                break
-            lower_line = line.lower()
-            if "direct" in lower_line or "premium" in lower_line:
-                continue
-            processed_line = pattern.sub(replace_country_names, line)
-            proxy_list.append(processed_line.strip())
+### 使用 PM2 管理进程（推荐）
 
-        return proxy_list
+本项目内置了 PM2 支持，无需额外编写脚本即可实现后台运行和开机自启。
 
+1. **安装 PM2**:
+   ```bash
+   npm install -g pm2
+   ```
 
-    def get_other_infos(lines: list):
-        infos = {"流量": "", "重置": "", "到期": ""}
-        index = lines.index("[Proxy]") + 1
-        while not lines[index].startswith("["):
-            if "G |" in lines[index]:
-                infos["流量"] = lines[index].strip()
-            elif "Reset" in lines[index]:
-                infos["重置"] = lines[index].strip().split("：")[1].strip()
-            elif "Date" in lines[index]:
-                infos["到期"] = lines[index].strip().split("：")[1].strip()
-            if all(infos.values()):
-                break
-            index += 1
-        # 当前时间
-        import datetime
+2. **启动服务**:
+   ```bash
+   # 在项目目录下
+   pm2 start ecosystem.config.js
+   ```
 
-        # 使用上海时区
-        timedelta = datetime.timedelta(hours=8)
+3. **常用命令**:
+   ```bash
+   pm2 logs sub-surge    # 查看日志
+   pm2 stop sub-surge    # 停止服务
+   pm2 restart sub-surge # 重启服务
+   ```
 
-        infos["更新"] = datetime.datetime.now().astimezone(datetime.timezone(timedelta)).strftime("%Y-%m-%d %H:%M:%S")
-        return infos
-    ```
+详细 PM2 使用指南请参考 [PM2_GUIDE.md](PM2_GUIDE.md)。
 
-2. 更新机场 `sub-surge update <机场名>`，运行此命令会自动更新机场的配置表，并将配置文件上传到腾讯对象存储。
-3. 合并配置 `sub-surge merge`，修改配置表中的`merge_airports`字段，填写要合并的机场名称，以及`merge_key`字段，填写合并配置表在对象存储中的路径:
+## 📁 目录结构
 
-## Developer
+默认情况下，程序会在用户根目录下创建 `.sub-surge` 文件夹：
 
-自定义规则集合，修改`template.py`中的配置表模板即可，你可以基于ACL4SSR项目中Clash的配置规则来自定义，填写配置表链接即可。
+```
+~/.sub-surge/
+├── config.json         # 机场与全局配置
+├── user_config.json    # 用户偏好设置（如端口）
+└── logs/               # 运行日志
+    ├── sub-surge.log
+    ├── pm2-out.log
+    └── pm2-error.log
+```
+
+## 💻 命令行工具
+
+除了 Web 界面，Sub-Surge 也提供了丰富的命令行工具：
+
+```bash
+# 启动 Web 服务
+sub-surge serve [--host 0.0.0.0] [--port 8000]
+
+# 添加机场
+sub-surge add --name "MyAirport" --url "https://..." --key "my.conf"
+
+# 更新订阅
+sub-surge update "MyAirport"
+
+# 合并订阅
+sub-surge merge
+
+# 列出所有机场
+sub-surge list
+```
+
+## 📄 许可证
+
+MIT License

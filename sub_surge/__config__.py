@@ -2,7 +2,7 @@ import os
 import json
 from QuickProject import user_root, user_lang, QproDefaultConsole, QproInfoString, _ask
 
-enable_config = True
+enable_config = False
 config_path = os.path.join(user_root, ".sub_surge_config")
 
 questions = {

@@ -4,13 +4,14 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "sub-surge"
-version = "0.0.12"
-description = "Update surge config"
+version = "2.1.0"
+description = "Config-driven Surge subscription manager with Web UI"
 authors = [ "Rhythmicc <rhythmlian.cn@gmail.com>",]
 license = "MIT"
-readme = "README.md"
-[[tool.poetry.packages]]
-include = "sub_surge"
+readme = "README_v2.md"
+packages = [
+    { include = "sub_surge" }
+]
 
 [tool.qpro]
 [[tool.qpro.server_targets]]
@@ -28,10 +29,15 @@ path = "/opt/homebrew/lib/python3.13/site-packages/"
 [tool.poetry.dependencies]
 python = "^3.10"
 qpro = "*"
+httpx = "^0.27.0"
 quickstart_rhy = "*"
+fastapi = "^0.100.0"
+uvicorn = "^0.23.0"
+pydantic = "^2.0.0"
 
 [tool.poetry.scripts]
 sub-surge = "sub_surge.main:main"
+sub-surge-legacy = "sub_surge.main:main"
 
 [tool.qpro.config]
 build = ""

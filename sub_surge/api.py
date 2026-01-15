@@ -1,0 +1,706 @@
+"""
+FastAPI后端服务
+提供REST API接口，用于管理机场配置
+"""
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from typing import Dict, List, Optional
+import os
+import logging
+import asyncio
+from datetime import datetime
+import threading
+
+from .config_manager import ConfigManager
+from .config_schema import AirportConfig, GlobalConfig
+from .parser import parse_with_config
+
+
+# 配置日志系统 - 使用用户根目录的 .sub-surge 目录
+# 支持通过环境变量 SUB_SURGE_CONFIG_DIR 自定义
+from pathlib import Path
+custom_dir = os.environ.get('SUB_SURGE_CONFIG_DIR')
+if custom_dir:
+    log_dir = Path(custom_dir) / "logs"
+else:
+    log_dir = Path.home() / ".sub-surge" / "logs"
+log_dir.mkdir(parents=True, exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_dir / 'sub-surge.log', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="Surge订阅配置管理API", version="2.0.0")
+
+# 配置CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 配置管理器
+config_manager = ConfigManager()
+
+# Web目录路径 - web 目录现在在 sub_surge 包内部
+web_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+
+# 挂载静态文件目录
+if os.path.exists(web_dir):
+    app.mount("/static", StaticFiles(directory=web_dir), name="static")
+
+# 自动更新任务状态
+auto_update_task = None
+auto_update_running = False
+
+
+# 请求模型
+class AddAirportRequest(BaseModel):
+    name: str
+    url: str
+    key: str
+    reset_day: int = 30
+    is_node_list: bool = False
+    exclude_keywords: Optional[List[str]] = None
+    country_mapping: Optional[Dict[str, str]] = None
+    name_regex_replacements: Optional[List[Dict[str, str]]] = None
+    info_keywords: Optional[Dict[str, List[str]]] = None
+
+
+class UpdateGlobalConfigRequest(BaseModel):
+    txcos_domain: Optional[str] = None
+    interval: Optional[int] = None
+    merge_key: Optional[str] = None
+    merge_airports: Optional[List[str]] = None
+    ai_api_key: Optional[str] = None
+    ai_base_url: Optional[str] = None
+    ai_model: Optional[str] = None
+
+
+# API路由
+@app.get("/")
+async def root():
+    """返回前端页面"""
+    logger.debug("访问首页")
+    index_path = os.path.join(web_dir, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return {"message": "Surge订阅配置管理API", "version": "2.0.0"}
+
+
+@app.get("/app.js")
+async def get_app_js():
+    """返回前端JS文件"""
+    js_path = os.path.join(web_dir, "app.js")
+    if os.path.exists(js_path):
+        return FileResponse(js_path, media_type="application/javascript")
+    raise HTTPException(status_code=404, detail="File not found")
+
+
+@app.get("/favicon.ico")
+async def get_favicon():
+    """返回网站图标"""
+    ico_path = os.path.join(web_dir, "favicon.ico")
+    if os.path.exists(ico_path):
+        return FileResponse(ico_path, media_type="image/x-icon")
+    raise HTTPException(status_code=404, detail="File not found")
+
+
+@app.get("/api/config")
+async def get_config():
+    """获取全局配置"""
+    return config_manager.get_global_config().dict()
+
+
+@app.put("/api/config")
+async def update_config(request: UpdateGlobalConfigRequest):
+    """更新全局配置"""
+    update_data = request.dict(exclude_none=True)
+    if config_manager.update_global_config(**update_data):
+        return {"message": "配置更新成功"}
+    raise HTTPException(status_code=500, detail="配置更新失败")
+
+
+@app.get("/api/config/export")
+async def export_config():
+    """导出配置"""
+    return config_manager.get_global_config().dict()
+
+
+@app.post("/api/config/import")
+async def import_config(config_data: GlobalConfig):
+    """导入配置"""
+    try:
+        config_manager.config = config_data
+        config_manager._save_config()
+        return {"message": "配置导入成功"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"配置导入失败: {str(e)}")
+
+
+@app.get("/api/airports")
+async def list_airports():
+    """获取所有机场配置"""
+    return config_manager.get_global_config().dict()
+
+
+@app.get("/api/airports/{name}")
+async def get_airport(name: str):
+    """获取指定机场配置"""
+    airport = config_manager.get_airport(name)
+    if not airport:
+        raise HTTPException(status_code=404, detail="机场不存在")
+    return airport.dict()
+
+
+@app.post("/api/airports")
+async def add_airport(request: AddAirportRequest):
+    """添加机场配置（基于AI分析结果）"""
+    # 检查机场是否已存在
+    if config_manager.get_airport(request.name):
+        raise HTTPException(status_code=400, detail="机场名称已存在")
+    
+    # 创建机场配置（不使用模板）
+    airport_data = {
+        "name": request.name,
+        "url": request.url,
+        "key": request.key,
+        "reset_day": request.reset_day,
+        "is_node_list": request.is_node_list,
+        "parser_config": {
+            "exclude_keywords": request.exclude_keywords or [],
+            "country_name_mapping": request.country_mapping or {},
+            "name_regex_replacements": request.name_regex_replacements or []
+        },
+        "info_extractor": request.info_keywords or {
+            "traffic_keywords": ["Bandwidth", "流量"],
+            "reset_keywords": ["Reset", "重置"],
+            "expire_keywords": ["Date", "到期"]
+        }
+    }
+    
+    try:
+        airport = AirportConfig(**airport_data)
+        if config_manager.add_airport(airport):
+            return {"message": "机场添加成功", "airport": airport.dict()}
+        raise HTTPException(status_code=500, detail="机场添加失败")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"配置验证失败: {str(e)}")
+
+
+@app.put("/api/airports/{name}")
+async def update_airport_config(name: str, request: AddAirportRequest):
+    """更新机场配置"""
+    if not config_manager.get_airport(name):
+        raise HTTPException(status_code=404, detail="机场不存在")
+    
+    try:
+        # 创建更新的机场配置
+        airport_data = {
+            "name": request.name,
+            "url": request.url,
+            "key": request.key,
+            "reset_day": request.reset_day,
+            "is_node_list": request.is_node_list,
+            "parser_config": {
+                "exclude_keywords": request.exclude_keywords or [],
+                "country_name_mapping": request.country_mapping or {},
+                "name_regex_replacements": request.name_regex_replacements or []
+            },
+            "info_keywords": request.info_keywords or {
+                "traffic_keywords": ["Bandwidth", "流量"],
+                "reset_keywords": ["Reset", "重置"],
+                "expire_keywords": ["Date", "到期"]
+            }
+        }
+        
+        airport = AirportConfig(**airport_data)
+        config_manager.config.airports[name] = airport
+        config_manager._save_config()
+        return {"message": "机场配置更新成功"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"配置更新失败: {str(e)}")
+
+
+@app.delete("/api/airports/{name}")
+async def delete_airport(name: str):
+    """删除机场配置"""
+    if config_manager.remove_airport(name):
+        return {"message": "机场删除成功"}
+    raise HTTPException(status_code=404, detail="机场不存在")
+
+
+@app.post("/api/airports/{name}/update")
+async def update_airport_subscription(name: str):
+    """更新机场订阅"""
+    airport = config_manager.get_airport(name)
+    if not airport:
+        raise HTTPException(status_code=404, detail="机场不存在")
+    
+    try:
+        # 这里调用原有的更新逻辑
+        from .updater import update_airport
+        result = update_airport(airport, config_manager.get_global_config())
+        return {"message": "订阅更新成功", "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"订阅更新失败: {str(e)}")
+
+
+@app.post("/api/merge")
+async def merge_subscriptions(request: dict):
+    """合并订阅"""
+    # 从请求体获取要合并的机场列表，如果没有则使用全局配置
+    airports_to_merge = request.get("airports") or config_manager.get_global_config().merge_airports
+    
+    if not airports_to_merge:
+        raise HTTPException(status_code=400, detail="未选择要合并的机场")
+    
+    try:
+        from .updater import merge_airports
+        result = merge_airports(airports_to_merge, config_manager)
+        return {"message": "订阅合并成功", "result": result}
+    except Exception as e:
+        # print trace
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"订阅合并失败: {str(e)}")
+
+
+@app.post("/api/analyze")
+async def analyze_subscription_url(request: dict):
+    """
+    分析订阅链接或订阅内容，自动推荐配置
+    
+    请求体:
+    {
+        "url": "订阅链接",  // 可选（与content二选一）
+        "content": "订阅内容",  // 可选（与url二选一）
+        "use_ai": true  // 可选，默认true，是否使用AI增强分析
+    }
+    
+    返回:
+    {
+        "is_node_list": bool,
+        "country_mapping": {...},
+        "exclude_keywords": [...],
+        "confidence": 0.8,
+        "suggestions": {...},
+        "analysis": {...},
+        "analysis_method": "ai" | "static" | "error"  // 分析方法
+    }
+    """
+    from .analyzer import analyze_subscription
+    
+    url = request.get("url")
+    content = request.get("content")
+    use_ai = request.get("use_ai", True)  # 默认启用AI
+    
+    if not url and not content:
+        raise HTTPException(status_code=400, detail="必须提供url或content参数")
+    
+    try:
+        result = analyze_subscription(url=url, content=content, use_ai=use_ai)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
+
+
+@app.post("/api/preview")
+async def preview_subscription(request: dict):
+    """
+    预览订阅内容（下载并解码）
+    
+    请求体:
+    {
+        "url": "订阅链接"
+    }
+    
+    返回:
+    {
+        "content": "解码后的订阅内容",
+        "is_base64": bool,
+        "line_count": int,
+        "preview": "前50行内容"
+    }
+    """
+    url = request.get("url")
+    if not url:
+        raise HTTPException(status_code=400, detail="缺少URL参数")
+    
+    try:
+        from QuickStart_Rhy.NetTools.NormalDL import normal_dl
+        import base64
+        
+        # 下载订阅内容
+        raw_content = normal_dl(url, "temp_preview", write_to_memory=True)
+        
+        if not raw_content:
+            raise HTTPException(status_code=400, detail="无法下载订阅内容")
+        
+        # 智能判断是否需要Base64解码
+        # 优先尝试直接解析为UTF-8（大多数情况是明文）
+        try:
+            decoded = raw_content.decode('utf-8', errors='strict')
+            is_base64 = False
+            
+            # 检查是否是明文格式（包含Surge/Clash特征）
+            has_surge_markers = any(marker in decoded for marker in ['[Proxy]', '[Proxy Group]', 'proxies:', '= ss,', '= vmess,', '= trojan,'])
+            
+            # 如果没有明显的配置标记，且内容看起来像base64，尝试解码
+            if not has_surge_markers and len(decoded) > 100:
+                # 检查是否全是base64字符（允许少量换行和空格）
+                content_without_whitespace = decoded.replace('\n', '').replace('\r', '').replace(' ', '')
+                base64_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=')
+                if len(content_without_whitespace) > 0 and all(c in base64_chars for c in content_without_whitespace):
+                    try:
+                        decoded_b64 = base64.b64decode(content_without_whitespace).decode('utf-8', errors='ignore')
+                        # 验证解码后的内容是否更像配置文件
+                        if any(marker in decoded_b64 for marker in ['[Proxy]', 'proxies:', 'ss://', 'vmess://', 'trojan://']):
+                            decoded = decoded_b64
+                            is_base64 = True
+                    except:
+                        pass  # 解码失败，保持原内容
+        except UnicodeDecodeError:
+            # UTF-8解码失败，尝试Base64解码
+            try:
+                decoded = base64.b64decode(raw_content).decode('utf-8', errors='ignore')
+                is_base64 = True
+            except:
+                # Base64也失败，强制转换
+                decoded = raw_content.decode('utf-8', errors='ignore')
+                is_base64 = False
+        
+        lines = decoded.split('\n')
+        line_count = len(lines)
+        # 不再限制行数，返回完整内容
+        preview = decoded  # 完整预览
+        
+        return {
+            "content": decoded,
+            "is_base64": is_base64,
+            "line_count": line_count,
+            "preview": preview
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"预览失败: {str(e)}")
+
+
+import httpx
+
+class CheckAvailabilityRequest(BaseModel):
+    names: List[str]
+
+@app.post("/api/check-availabilities")
+async def check_availabilities(request: CheckAvailabilityRequest):
+    """检测机场配置链接的连通性"""
+    global_conf = config_manager.get_global_config()
+    domain = global_conf.txcos_domain
+    
+    if not domain:
+        # 如果没有配置域名，返回错误
+        return {name: {"status": "fail", "code": "无域名配置"} for name in request.names}
+    
+    # 确保域名格式正确
+    base_url = domain.rstrip('/')
+    if not base_url.startswith('http'):
+        base_url = f"https://{base_url}"
+    
+    results = {}
+    
+    async with httpx.AsyncClient(verify=False, timeout=5.0) as client:
+        for name in request.names:
+            airport = config_manager.get_airport(name)
+            if not airport:
+                results[name] = {"status": "fail", "code": "404"}
+                continue
+            
+            # 构造完整URL
+            target_url = f"{base_url}/{airport.key}"
+            
+            try:
+                # 使用HEAD请求检测
+                response = await client.head(target_url)
+                
+                # 如果HEAD不允许(405)，尝试GET
+                if response.status_code == 405:
+                    response = await client.get(target_url)
+                
+                if response.status_code == 200:
+                    results[name] = {"status": "ok", "code": 200}
+                else:
+                    results[name] = {"status": "fail", "code": response.status_code}
+            except httpx.RequestError as e:
+                results[name] = {"status": "fail", "code": "Network Error"}
+            except Exception as e:
+                 results[name] = {"status": "fail", "code": str(e)}
+                 
+    return results
+
+
+@app.get("/api/ai-models")
+async def get_ai_models():
+    """
+    获取OpenRouter可用的AI模型列表
+    优先从缓存获取，缓存1小时
+    """
+    import httpx
+    from datetime import datetime, timedelta
+    
+    # 简单的内存缓存
+    cache_key = "_openrouter_models_cache"
+    cache_time_key = "_openrouter_models_cache_time"
+    
+    # 检查缓存
+    if hasattr(app.state, cache_key):
+        cache_time = getattr(app.state, cache_time_key, None)
+        if cache_time and datetime.now() - cache_time < timedelta(hours=1):
+            return getattr(app.state, cache_key)
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get("https://openrouter.ai/api/v1/models")
+            
+            if response.status_code != 200:
+                # 返回默认模型列表
+                return get_default_models()
+            
+            data = response.json()
+            models = data.get("data", [])
+            
+            # 过滤和格式化模型
+            formatted_models = []
+            for model in models:
+                model_id = model.get("id", "")
+                pricing = model.get("pricing", {})
+                
+                # 判断是否免费
+                is_free = (
+                    ":free" in model_id or
+                    (pricing.get("prompt") == "0" and pricing.get("completion") == "0")
+                )
+                
+                # 提取厂商信息
+                vendor = model_id.split('/')[0] if '/' in model_id else "other"
+                
+                formatted_models.append({
+                    "id": model_id,
+                    "name": model.get("name", model_id),
+                    "description": model.get("description", ""),
+                    "context_length": model.get("context_length", 0),
+                    "pricing": {
+                        "prompt": pricing.get("prompt", "0"),
+                        "completion": pricing.get("completion", "0")
+                    },
+                    "is_free": is_free,
+                    "vendor": vendor
+                })
+            
+            # 缓存结果
+            setattr(app.state, cache_key, formatted_models)
+            setattr(app.state, cache_time_key, datetime.now())
+            
+            return formatted_models
+            
+    except Exception as e:
+        print(f"获取OpenRouter模型列表失败: {e}")
+        # 返回默认模型列表
+        return get_default_models()
+
+
+def get_default_models():
+    """返回默认的模型列表（作为后备）"""
+    return [
+        {
+            "id": "google/gemini-2.0-flash-exp:free",
+            "name": "Google Gemini 2.0 Flash Exp",
+            "description": "免费模型，速度快",
+            "context_length": 1000000,
+            "pricing": {"prompt": "0", "completion": "0"},
+            "is_free": True,
+            "vendor": "google"
+        },
+        {
+            "id": "google/gemini-flash-1.5",
+            "name": "Google Gemini 1.5 Flash",
+            "description": "免费模型，稳定可靠",
+            "context_length": 1000000,
+            "pricing": {"prompt": "0", "completion": "0"},
+            "is_free": True,
+            "vendor": "google"
+        },
+        {
+            "id": "meta-llama/llama-3.2-3b-instruct:free",
+            "name": "Meta Llama 3.2 3B",
+            "description": "开源免费模型",
+            "context_length": 131072,
+            "pricing": {"prompt": "0", "completion": "0"},
+            "is_free": True,
+            "vendor": "meta-llama"
+        },
+        {
+            "id": "anthropic/claude-3.5-sonnet",
+            "name": "Claude 3.5 Sonnet",
+            "description": "高性能模型",
+            "context_length": 200000,
+            "pricing": {"prompt": "0.000003", "completion": "0.000015"},
+            "is_free": False,
+            "vendor": "anthropic"
+        },
+        {
+            "id": "openai/gpt-4o",
+            "name": "GPT-4o",
+            "description": "OpenAI最新模型",
+            "context_length": 128000,
+            "pricing": {"prompt": "0.0000025", "completion": "0.00001"},
+            "is_free": False,
+            "vendor": "openai"
+        },
+        {
+            "id": "meta-llama/llama-3.3-70b-instruct",
+            "name": "Meta Llama 3.3 70B",
+            "description": "经济型大模型",
+            "context_length": 131072,
+            "pricing": {"prompt": "0.00000035", "completion": "0.0000014"},
+            "is_free": False,
+            "vendor": "meta-llama"
+        }
+    ]
+
+
+async def auto_update_task_func():
+    """自动更新任务"""
+    global auto_update_running
+    logger.info("自动更新任务已启动")
+    
+    while auto_update_running:
+        try:
+            global_config = config_manager.get_global_config()
+            interval = global_config.interval or 3600
+            
+            logger.info(f"等待 {interval} 秒后执行下次更新...")
+            await asyncio.sleep(interval)
+            
+            if not auto_update_running:
+                break
+            
+            logger.info("开始自动更新所有机场订阅...")
+            
+            # 更新所有机场
+            from .updater import update_airport, merge_airports
+            
+            airports = config_manager.list_airports()
+            for airport_name in airports:
+                try:
+                    airport = config_manager.get_airport(airport_name)
+                    if airport:
+                        logger.info(f"更新机场: {airport_name}")
+                        result = update_airport(airport, global_config)
+                        if result.get('success'):
+                            logger.info(f"机场 {airport_name} 更新成功")
+                        else:
+                            logger.error(f"机场 {airport_name} 更新失败: {result.get('error')}")
+                except Exception as e:
+                    logger.error(f"更新机场 {airport_name} 时出错: {str(e)}")
+            
+            # 如果配置了合并订阅，则执行合并
+            if global_config.merge_airports and len(global_config.merge_airports) > 0:
+                try:
+                    logger.info(f"合并订阅: {global_config.merge_airports}")
+                    result = merge_airports(global_config.merge_airports, config_manager)
+                    if result.get('success'):
+                        logger.info("订阅合并成功")
+                    else:
+                        logger.error(f"订阅合并失败: {result.get('error')}")
+                except Exception as e:
+                    logger.error(f"合并订阅时出错: {str(e)}")
+                    
+            logger.info("自动更新完成")
+            
+        except Exception as e:
+            logger.error(f"自动更新任务出错: {str(e)}")
+            await asyncio.sleep(60)  # 出错后等待1分钟再试
+    
+    logger.info("自动更新任务已停止")
+
+
+@app.on_event("startup")
+async def startup_event():
+    """服务启动时执行"""
+    global auto_update_task, auto_update_running
+    
+    logger.info("Surge订阅管理服务启动")
+    logger.info(f"日志目录: {log_dir}")
+    
+    # 启动自动更新任务
+    auto_update_running = True
+    auto_update_task = asyncio.create_task(auto_update_task_func())
+    logger.info("自动更新任务已创建")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """服务关闭时执行"""
+    global auto_update_task, auto_update_running
+    
+    logger.info("正在停止自动更新任务...")
+    auto_update_running = False
+    
+    if auto_update_task:
+        auto_update_task.cancel()
+        try:
+            await auto_update_task
+        except asyncio.CancelledError:
+            pass
+    
+    logger.info("Surge订阅管理服务已停止")
+
+
+@app.get("/health")
+async def health_check():
+    """健康检查"""
+    return {
+        "status": "ok",
+        "auto_update_running": auto_update_running,
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@app.get("/api/logs")
+async def get_logs(lines: int = 100):
+    """获取最近的日志"""
+    try:
+        log_file = log_dir / 'sub-surge.log'
+        if not log_file.exists():
+            return {"logs": []}
+        
+        with open(log_file, 'r', encoding='utf-8') as f:
+            all_lines = f.readlines()
+            recent_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+            return {"logs": recent_lines}
+    except Exception as e:
+        logger.error(f"读取日志失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"读取日志失败: {str(e)}")
+
+
+def start_server(host: str = "0.0.0.0", port: int = 8000):
+    """启动服务器"""
+    import uvicorn
+    logger.info(f"启动服务器: {host}:{port}")
+    uvicorn.run(app, host=host, port=port)
+
+
+if __name__ == "__main__":
+    start_server()
