@@ -418,6 +418,63 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+
+        .rule-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.2s;
+            cursor: move;
+        }
+
+        .rule-item:hover {
+            border-color: #667eea;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+        }
+
+        .rule-item.disabled {
+            opacity: 0.5;
+            background: #f5f5f5;
+        }
+
+        .rule-item-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .rule-item-info {
+            flex: 1;
+        }
+
+        .rule-item-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .rule-item-details {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .rule-item-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .drag-handle {
+            cursor: move;
+            color: #999;
+            font-size: 20px;
+            padding: 0 5px;
+        }
     </style>
 </head>
 <body>
@@ -471,6 +528,7 @@
             <div class="tabs">
                 <div class="tabs-left">
                     <button class="tab active" data-tab="airports">机场管理</button>
+                    <button class="tab" data-tab="rule-sets">规则集</button>
                     <button class="tab" data-tab="global-config">全局配置</button>
                     <button class="tab" data-tab="export-import">导入/导出</button>
                     <button class="tab" data-tab="logs">日志查看</button>
@@ -611,6 +669,71 @@
                         <button type="reset" class="btn btn-secondary">重置表单</button>
                     </div>
                 </form>
+            </div>
+
+            <!-- 规则集管理标签页 -->
+            <div id="rule-sets" class="tab-content">
+                <h2>📋 规则集管理</h2>
+                <p style="color: #666; margin-bottom: 20px;">管理 Surge 配置中的规则集，控制流量路由规则</p>
+                
+                <div style="margin-bottom: 20px;">
+                    <button class="btn btn-primary" onclick="showAddRuleSetForm()">➕ 添加规则集</button>
+                </div>
+
+                <!-- 添加规则集表单 -->
+                <div id="add-rule-set-form" style="display: none; background: #f8f9fa; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                    <h3 style="margin-bottom: 15px;">添加新规则集</h3>
+                    <form id="rule-set-form" onsubmit="saveRuleSet(event)">
+                        <input type="hidden" id="rule-set-index" value="-1">
+                        <div class="form-group">
+                            <label for="rule_name">规则名称 *</label>
+                            <input type="text" id="rule_name" name="rule_name" required placeholder="例如：YouTube">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="rule_url">规则集URL *</label>
+                            <input type="url" id="rule_url" name="rule_url" required placeholder="https://...">
+                            <small>规则集文件的完整URL地址</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="rule_policy">策略 *</label>
+                            <select id="rule_policy" name="rule_policy" required>
+                                <option value="">请选择策略...</option>
+                            </select>
+                            <small>流量匹配后将使用的策略组</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="rule_update_interval">更新间隔（秒）</label>
+                            <input type="number" id="rule_update_interval" name="rule_update_interval" value="86400" min="60">
+                            <small>规则集自动更新的间隔时间，默认86400秒（24小时）</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="rule_enabled" name="rule_enabled" checked style="width: auto; margin-right: 8px;">
+                                启用此规则集
+                            </label>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px;">
+                            <button type="submit" class="btn btn-primary">保存</button>
+                            <button type="button" class="btn btn-secondary" onclick="cancelRuleSetForm()">取消</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- 规则集列表 -->
+                <div id="rule-sets-list" style="background: #f8f9fa; padding: 20px; border-radius: 12px;">
+                    <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin: 0;">当前规则集</h3>
+                        <span id="rule-count" style="color: #666;">加载中...</span>
+                    </div>
+                    <div id="rule-sets-container">
+                        <!-- 动态生成规则集列表 -->
+                    </div>
+                </div>
             </div>
 
             <!-- 全局配置标签页 -->

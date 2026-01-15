@@ -159,6 +159,15 @@ def update_airport(
             # 如果下载失败，使用空配置
             host_config = ""
         
+        # 生成规则集配置
+        rule_sets_lines = []
+        for rule in global_config.rule_sets:
+            if rule.enabled:
+                rule_sets_lines.append(
+                    f"RULE-SET,{rule.url},{rule.policy},update-interval={rule.update_interval}"
+                )
+        rule_sets_config = "\n".join(rule_sets_lines)
+        
         # 构建配置参数
         config_params = {
             "cos_url": f"{global_config.txcos_domain}/{airport_config.key}",
@@ -184,7 +193,8 @@ def update_airport(
             ] + [
                 f"{region}智能 = smart,{','.join(regions[region])},persistent=1"
                 for region in regions
-            ])
+            ]),
+            "rule_sets": rule_sets_config
         }
         
         # 生成配置文件
@@ -333,6 +343,15 @@ def merge_airports(
                 )
             )
         
+        # 生成规则集配置
+        rule_sets_lines = []
+        for rule in global_config.rule_sets:
+            if rule.enabled:
+                rule_sets_lines.append(
+                    f"RULE-SET,{rule.url},{rule.policy},update-interval={rule.update_interval}"
+                )
+        rule_sets_config = "\n".join(rule_sets_lines)
+        
         config_params = {
             "cos_url": f"{global_config.txcos_domain}/{global_config.merge_key}",
             "proxies": "\n".join(all_proxies),
@@ -352,7 +371,8 @@ def merge_airports(
             ] + [
                 f"{region}智能 = smart,{','.join(regions[region])},persistent=1"
                 for region in regions
-            ])
+            ]),
+            "rule_sets": rule_sets_config
         }
         
         conf_content = conf_template.format(**config_params)

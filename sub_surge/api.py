@@ -201,6 +201,16 @@ class UpdateGlobalConfigRequest(BaseModel):
     ai_api_key: Optional[str] = None
     ai_base_url: Optional[str] = None
     ai_model: Optional[str] = None
+    rule_sets: Optional[List[Dict]] = None
+
+
+class RuleSetRequest(BaseModel):
+    """规则集请求"""
+    name: str
+    url: str
+    policy: str
+    enabled: bool = True
+    update_interval: int = 86400
 
 
 # 2FA 认证相关接口
@@ -939,6 +949,89 @@ async def get_logs(lines: int = 100, token: str = Depends(verify_token_from_requ
     except Exception as e:
         logger.error(f"读取日志失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"读取日志失败: {str(e)}")
+
+
+@app.get("/api/policies")
+async def get_policies(token: str = Depends(verify_token_from_request)):
+    """获取可用的策略列表"""
+    from .template import FIXED_POLICIES, REGION_POLICIES
+    return {
+        "fixed": FIXED_POLICIES,
+        "regions": REGION_POLICIES,
+        "all": FIXED_POLICIES + REGION_POLICIES
+    }
+
+
+@app.get("/api/rule-sets")
+async def get_rule_sets(token: str = Depends(verify_token_from_request)):
+    """获取所有规则集"""
+    from .config_schema import RuleSet
+    return [rule.dict() for rule in config_manager.get_global_config().rule_sets]
+
+
+@app.post("/api/rule-sets")
+async def add_rule_set(rule: RuleSetRequest, token: str = Depends(verify_token_from_request)):
+    """添加规则集"""
+    from .config_schema import RuleSet
+    try:
+        new_rule = RuleSet(**rule.dict())
+        config_manager.config.rule_sets.append(new_rule)
+        config_manager._save_config()
+        return {"message": "规则集添加成功"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"添加失败: {str(e)}")
+
+
+@app.put("/api/rule-sets/{index}")
+async def update_rule_set(index: int, rule: RuleSetRequest, token: str = Depends(verify_token_from_request)):
+    """更新规则集"""
+    from .config_schema import RuleSet
+    try:
+        if index < 0 or index >= len(config_manager.config.rule_sets):
+            raise HTTPException(status_code=404, detail="规则集不存在")
+        
+        config_manager.config.rule_sets[index] = RuleSet(**rule.dict())
+        config_manager._save_config()
+        return {"message": "规则集更新成功"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"更新失败: {str(e)}")
+
+
+@app.delete("/api/rule-sets/{index}")
+async def delete_rule_set(index: int, token: str = Depends(verify_token_from_request)):
+    """删除规则集"""
+    try:
+        if index < 0 or index >= len(config_manager.config.rule_sets):
+            raise HTTPException(status_code=404, detail="规则集不存在")
+        
+        del config_manager.config.rule_sets[index]
+        config_manager._save_config()
+        return {"message": "规则集删除成功"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"删除失败: {str(e)}")
+
+
+@app.post("/api/rule-sets/reorder")
+async def reorder_rule_sets(request: dict, token: str = Depends(verify_token_from_request)):
+    """重新排序规则集"""
+    from .config_schema import RuleSet
+    try:
+        indices = request.get("indices", [])
+        if len(indices) != len(config_manager.config.rule_sets):
+            raise HTTPException(status_code=400, detail="索引数量不匹配")
+        
+        new_order = [config_manager.config.rule_sets[i] for i in indices]
+        config_manager.config.rule_sets = new_order
+        config_manager._save_config()
+        return {"message": "规则集排序成功"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"排序失败: {str(e)}")
 
 
 def start_server(host: str = "0.0.0.0", port: int = 8000):

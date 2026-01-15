@@ -107,6 +107,15 @@ class AirportConfig(BaseModel):
         return v
 
 
+class RuleSet(BaseModel):
+    """规则集配置"""
+    name: str = Field(..., description="规则集名称")
+    url: str = Field(..., description="规则集URL")
+    policy: str = Field(..., description="策略名称")
+    enabled: bool = Field(default=True, description="是否启用")
+    update_interval: int = Field(default=86400, description="更新间隔（秒）")
+
+
 class GlobalConfig(BaseModel):
     """全局配置"""
     
@@ -125,6 +134,45 @@ class GlobalConfig(BaseModel):
         default="google/gemini-2.0-flash-exp:free",
         description="AI模型名称"
     )
+    
+    # 规则集配置
+    rule_sets: List[RuleSet] = Field(default_factory=lambda: [
+        RuleSet(name="日本域名", url="https://raw.githubusercontent.com/Rhythmicc/ACL4SSR/master/Clash/jp.list", policy="🇯🇵 日本", enabled=False),
+        RuleSet(name="美国域名", url="https://raw.githubusercontent.com/Rhythmicc/ACL4SSR/master/Clash/us.list", policy="🇺🇸 美国", enabled=True),
+        RuleSet(name="直连域名", url="https://raw.githubusercontent.com/Rhythmicc/ACL4SSR/master/Clash/direct.list", policy="DIRECT", enabled=True),
+        RuleSet(name="局域网", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/LocalAreaNetwork.list", policy="🎯 全球直连", enabled=True),
+        RuleSet(name="解禁", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/UnBan.list", policy="🎯 全球直连", enabled=True),
+        RuleSet(name="广告拦截", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/BanAD.list", policy="🛑 全球拦截", enabled=True),
+        RuleSet(name="应用净化", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/BanProgramAD.list", policy="🍃 应用净化", enabled=True),
+        RuleSet(name="谷歌FCM", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/GoogleFCM.list", policy="📢 谷歌FCM", enabled=True),
+        RuleSet(name="谷歌CN", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/GoogleCN.list", policy="🎯 全球直连", enabled=True),
+        RuleSet(name="Steam CN", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/SteamCN.list", policy="🎯 全球直连", enabled=True),
+        RuleSet(name="微软服务", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Microsoft.list", policy="Ⓜ️ 微软服务", enabled=True),
+        RuleSet(name="苹果服务", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Apple.list", policy="🍎 苹果服务", enabled=True),
+        RuleSet(name="Telegram", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Telegram.list", policy="📲 电报信息", enabled=True),
+        RuleSet(name="国外媒体", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ProxyMedia.list", policy="🌍 国外媒体", enabled=True),
+        RuleSet(name="代理精简", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ProxyLite.list", policy="🚀 节点选择", enabled=True),
+        RuleSet(name="国内域名", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaDomain.list", policy="🎯 全球直连", enabled=True),
+        RuleSet(name="国内IP", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaCompanyIp.list", policy="🎯 全球直连", enabled=True),
+        RuleSet(name="Bing", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Bing.list", policy="Ⓜ️ 微软Bing", enabled=True),
+        RuleSet(name="OneDrive", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/OneDrive.list", policy="Ⓜ️ 微软云盘", enabled=True),
+        RuleSet(name="AI平台", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/AI.list", policy="💬 Ai平台", enabled=True),
+        RuleSet(name="OpenAI", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/OpenAi.list", policy="💬 Ai平台", enabled=True),
+        RuleSet(name="网易云音乐", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/NetEaseMusic.list", policy="🎯 全球直连", enabled=True),
+        RuleSet(name="Epic", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Epic.list", policy="🎮 游戏平台", enabled=True),
+        RuleSet(name="Origin", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Origin.list", policy="🎮 游戏平台", enabled=True),
+        RuleSet(name="Sony", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Sony.list", policy="🎮 游戏平台", enabled=True),
+        RuleSet(name="Steam", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Steam.list", policy="🎮 游戏平台", enabled=True),
+        RuleSet(name="任天堂", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Nintendo.list", policy="🎮 游戏平台", enabled=True),
+        RuleSet(name="YouTube", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/YouTube.list", policy="📹 油管视频", enabled=True),
+        RuleSet(name="Netflix", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Netflix.list", policy="🎥 奈飞视频", enabled=True),
+        RuleSet(name="巴哈姆特", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Bahamut.list", policy="📺 巴哈姆特", enabled=True),
+        RuleSet(name="哔哩哔哩港澳台", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/BilibiliHMT.list", policy="📺 哔哩哔哩", enabled=True),
+        RuleSet(name="哔哩哔哩", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Bilibili.list", policy="📺 哔哩哔哩", enabled=True),
+        RuleSet(name="国内媒体", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaMedia.list", policy="🌏 国内媒体", enabled=True),
+        RuleSet(name="GFW列表", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ProxyGFWlist.list", policy="🚀 节点选择", enabled=True),
+        RuleSet(name="下载工具", url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Download.list", policy="🎯 全球直连", enabled=True),
+    ], description="规则集列表")
     
     # 机场配置列表
     airports: Dict[str, AirportConfig] = Field(

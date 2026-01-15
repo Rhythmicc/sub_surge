@@ -1389,5 +1389,322 @@ document.addEventListener('DOMContentLoaded', () => {
     checkAndShow2FAModal().then(() => {
         loadAirports();
         loadGlobalConfig();
+        loadPolicies();  // 加载策略列表
+        loadRuleSets();  // 加载规则集
     });
 });
+
+// ==================== 规则集管理 ====================
+let ruleSets = [];
+let availablePolicies = [];
+
+// 加载可用策略
+async function loadPolicies() {
+    try {
+        const response = await fetch(`${API_BASE}/api/policies`, {
+            headers: getAuthHeaders()
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            availablePolicies = data.all || [];
+            populatePolicySelect();
+        } else {
+            console.error('加载策略列表失败');
+        }
+    } catch (error) {
+        console.error('加载策略列表失败:', error);
+    }
+}
+
+// 填充策略下拉框
+function populatePolicySelect() {
+    const select = document.getElementById('rule_policy');
+    if (!select) return;
+    
+    // 保存当前选中值
+    const currentValue = select.value;
+    
+    // 清空现有选项（保留第一个提示选项）
+    select.innerHTML = '<option value="">请选择策略...</option>';
+    
+    // 添加所有策略选项
+    availablePolicies.forEach(policy => {
+        const option = document.createElement('option');
+        option.value = policy;
+        option.textContent = policy;
+        select.appendChild(option);
+    });
+    
+    // 恢复之前的选中值
+    if (currentValue) {
+        select.value = currentValue;
+    }
+}
+
+// 加载规则集
+async function loadRuleSets() {
+    try {
+        const response = await fetch(`${API_BASE}/api/rule-sets`, {
+            headers: getAuthHeaders()
+        });
+        
+        if (response.ok) {
+            ruleSets = await response.json();
+            renderRuleSets();
+        } else {
+            console.error('加载规则集失败');
+        }
+    } catch (error) {
+        console.error('加载规则集失败:', error);
+    }
+}
+
+// 渲染规则集列表
+function renderRuleSets() {
+    const container = document.getElementById('rule-sets-container');
+    const countEl = document.getElementById('rule-count');
+    
+    if (!ruleSets || ruleSets.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: #999; padding: 40px;">暂无规则集</p>';
+        countEl.textContent = '共 0 条规则';
+        return;
+    }
+    
+    countEl.textContent = `共 ${ruleSets.length} 条规则（已启用 ${ruleSets.filter(r => r.enabled).length} 条）`;
+    
+    container.innerHTML = ruleSets.map((rule, index) => `
+        <div class="rule-item ${rule.enabled ? '' : 'disabled'}" data-index="${index}" draggable="true">
+            <div class="rule-item-left">
+                <span class="drag-handle">☰</span>
+                <div class="rule-item-info">
+                    <div class="rule-item-name">${rule.name}</div>
+                    <div class="rule-item-details">
+                        策略: ${rule.policy} · 更新间隔: ${rule.update_interval}秒
+                    </div>
+                </div>
+            </div>
+            <div class="rule-item-actions">
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" ${rule.enabled ? 'checked' : ''} 
+                        onchange="toggleRuleSet(${index})" 
+                        style="width: 18px; height: 18px; cursor: pointer;">
+                    <span style="font-size: 12px; color: #666;">启用</span>
+                </label>
+                <button class="btn btn-secondary" onclick="editRuleSet(${index})" 
+                    style="padding: 4px 12px; font-size: 13px;">编辑</button>
+                <button class="btn btn-danger" onclick="deleteRuleSet(${index})" 
+                    style="padding: 4px 12px; font-size: 13px;">删除</button>
+            </div>
+        </div>
+    `).join('');
+    
+    // 添加拖拽事件
+    initRuleSetDrag();
+}
+
+// 初始化拖拽
+function initRuleSetDrag() {
+    const items = document.querySelectorAll('.rule-item');
+    let draggedItem = null;
+    
+    items.forEach(item => {
+        item.addEventListener('dragstart', (e) => {
+            draggedItem = item;
+            e.dataTransfer.effectAllowed = 'move';
+            item.style.opacity = '0.5';
+        });
+        
+        item.addEventListener('dragend', (e) => {
+            item.style.opacity = '1';
+        });
+        
+        item.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            
+            const afterElement = getDragAfterElement(e.currentTarget.parentElement, e.clientY);
+            if (afterElement == null) {
+                e.currentTarget.parentElement.appendChild(draggedItem);
+            } else {
+                e.currentTarget.parentElement.insertBefore(draggedItem, afterElement);
+            }
+        });
+    });
+    
+    // 拖拽结束后保存新顺序
+    const container = document.getElementById('rule-sets-container');
+    container.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        await saveRuleSetOrder();
+    });
+}
+
+function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.rule-item:not(.dragging)')];
+    
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+// 保存规则集顺序
+async function saveRuleSetOrder() {
+    const items = document.querySelectorAll('.rule-item');
+    const indices = Array.from(items).map(item => parseInt(item.dataset.index));
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/rule-sets/reorder`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ indices: indices })
+        });
+        
+        if (response.ok) {
+            showAlert('规则集顺序已保存');
+            await loadRuleSets();
+        } else {
+            showAlert('保存顺序失败', 'error');
+        }
+    } catch (error) {
+        showAlert('保存顺序失败: ' + error.message, 'error');
+    }
+}
+
+// 显示添加规则集表单
+function showAddRuleSetForm() {
+    document.getElementById('add-rule-set-form').style.display = 'block';
+    document.getElementById('rule-set-index').value = '-1';
+    document.getElementById('rule-set-form').reset();
+    document.getElementById('rule_enabled').checked = true;
+}
+
+// 取消规则集表单
+function cancelRuleSetForm() {
+    document.getElementById('add-rule-set-form').style.display = 'none';
+    document.getElementById('rule-set-form').reset();
+}
+
+// 编辑规则集
+function editRuleSet(index) {
+    const rule = ruleSets[index];
+    document.getElementById('rule-set-index').value = index;
+    document.getElementById('rule_name').value = rule.name;
+    document.getElementById('rule_url').value = rule.url;
+    document.getElementById('rule_update_interval').value = rule.update_interval;
+    document.getElementById('rule_enabled').checked = rule.enabled;
+    
+    // 确保策略下拉框已填充，然后设置值
+    if (availablePolicies.length > 0) {
+        document.getElementById('rule_policy').value = rule.policy;
+    } else {
+        // 如果策略列表还没加载，先加载再设置
+        loadPolicies().then(() => {
+            document.getElementById('rule_policy').value = rule.policy;
+        });
+    }
+    
+    document.getElementById('add-rule-set-form').style.display = 'block';
+    
+    // 滚动到表单
+    document.getElementById('add-rule-set-form').scrollIntoView({ behavior: 'smooth' });
+}
+
+// 保存规则集
+async function saveRuleSet(event) {
+    event.preventDefault();
+    
+    const index = parseInt(document.getElementById('rule-set-index').value);
+    const data = {
+        name: document.getElementById('rule_name').value,
+        url: document.getElementById('rule_url').value,
+        policy: document.getElementById('rule_policy').value,
+        update_interval: parseInt(document.getElementById('rule_update_interval').value),
+        enabled: document.getElementById('rule_enabled').checked
+    };
+    
+    try {
+        let response;
+        if (index === -1) {
+            // 添加
+            response = await fetch(`${API_BASE}/api/rule-sets`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify(data)
+            });
+        } else {
+            // 更新
+            response = await fetch(`${API_BASE}/api/rule-sets/${index}`, {
+                method: 'PUT',
+                headers: getAuthHeaders(),
+                body: JSON.stringify(data)
+            });
+        }
+        
+        if (response.ok) {
+            showAlert(index === -1 ? '规则集添加成功' : '规则集更新成功');
+            cancelRuleSetForm();
+            await loadRuleSets();
+        } else {
+            const error = await response.json();
+            showAlert('保存失败: ' + error.detail, 'error');
+        }
+    } catch (error) {
+        showAlert('保存失败: ' + error.message, 'error');
+    }
+}
+
+// 切换规则集启用状态
+async function toggleRuleSet(index) {
+    const rule = ruleSets[index];
+    rule.enabled = !rule.enabled;
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/rule-sets/${index}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(rule)
+        });
+        
+        if (response.ok) {
+            showAlert(rule.enabled ? '规则集已启用' : '规则集已禁用');
+            await loadRuleSets();
+        } else {
+            showAlert('操作失败', 'error');
+            await loadRuleSets();
+        }
+    } catch (error) {
+        showAlert('操作失败: ' + error.message, 'error');
+        await loadRuleSets();
+    }
+}
+
+// 删除规则集
+async function deleteRuleSet(index) {
+    if (!confirm(`确定要删除规则集 "${ruleSets[index].name}" 吗？`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/rule-sets/${index}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        
+        if (response.ok) {
+            showAlert('规则集已删除');
+            await loadRuleSets();
+        } else {
+            showAlert('删除失败', 'error');
+        }
+    } catch (error) {
+        showAlert('删除失败: ' + error.message, 'error');
+    }
+}
