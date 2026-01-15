@@ -8,7 +8,7 @@ version = "2.1.0"
 description = "Config-driven Surge subscription manager with Web UI"
 authors = [ "Rhythmicc <rhythmlian.cn@gmail.com>",]
 license = "MIT"
-readme = "README_v2.md"
+readme = "README.md"
 packages = [
     { include = "sub_surge" }
 ]
