@@ -7,8 +7,8 @@ let aiModelsCache = null;  // AI模型列表缓存
 let isEditingAirport = false;  // 是否处于编辑机场模式
 let editingAirportName = null;  // 当前编辑的机场名称
 
-// API基础URL（根据实际情况修改）
-const API_BASE = 'http://localhost:8000';
+// API基础URL（自动使用当前页面的地址和端口）
+const API_BASE = window.location.origin;
 
 // 工具函数
 function showAlert(message, type = 'success') {

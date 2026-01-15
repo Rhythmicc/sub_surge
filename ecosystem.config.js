@@ -4,6 +4,7 @@ module.exports = {
       name: 'sub-surge',
       script: 'sub-surge',
       args: 'serve',
+      interpretor: 'none',
       instances: 1,
       exec_mode: 'fork',
       watch: false,
