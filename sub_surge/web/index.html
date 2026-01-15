@@ -421,6 +421,46 @@
     </style>
 </head>
 <body>
+    <!-- 2FA 绑定模态框 -->
+    <div id="2fa-bind-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); z-index: 9999; align-items: center; justify-content: center;">
+        <div style="background: white; border-radius: 12px; padding: 40px; max-width: 500px; width: 90%; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3); text-align: center;">
+            <h2 id="2fa-modal-title" style="margin-bottom: 20px; color: #333;">🔐 首次使用需要绑定 2FA</h2>
+            <p id="2fa-modal-description" style="margin-bottom: 20px; color: #666; line-height: 1.6;">
+                为了您的账户安全，系统采用双因素认证（2FA）。<br>
+                请使用身份验证器应用扫描下方二维码。
+            </p>
+            
+            <!-- 二维码显示区域 -->
+            <div id="qr-code-container" style="margin: 20px auto; padding: 20px; background: #f5f5f5; border-radius: 8px; display: none;">
+                <img id="qr-code-image" src="" alt="QR Code" style="max-width: 250px; width: 100%; display: block;">
+            </div>
+            
+            <!-- 手动输入密钥 -->
+            <div id="manual-secret-container" style="margin: 20px 0; padding: 15px; background: #f9f9f9; border-radius: 8px; border: 1px dashed #ccc; display: none;">
+                <p style="margin-bottom: 10px; color: #666; font-size: 13px;">无法扫码？手动输入以下密钥：</p>
+                <code id="manual-secret" style="display: block; padding: 10px; background: white; border-radius: 4px; font-size: 14px; color: #667eea; font-weight: 600; word-break: break-all;"></code>
+            </div>
+            
+            <!-- 验证码输入 -->
+            <div style="margin-bottom: 20px;">
+                <p style="margin-bottom: 10px; color: #666; font-size: 14px; text-align: left;">请输入身份验证器中的 6 位验证码：</p>
+                <input type="text" id="2fa-code-input" placeholder="输入 6 位验证码" maxlength="6" 
+                    style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 18px; 
+                    box-sizing: border-box; text-align: center; letter-spacing: 5px; font-weight: 600;">
+            </div>
+            
+            <button id="verify-2fa-btn" onclick="verify2FA()" 
+                style="width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 8px; 
+                font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                验证并绑定
+            </button>
+            
+            <p style="margin-top: 15px; font-size: 12px; color: #999;">
+                推荐使用: Google Authenticator, Microsoft Authenticator, Authy 等
+            </p>
+        </div>
+    </div>
+
     <div class="container">
         <div class="header">
             <h1>✈️ Surge 订阅配置管理</h1>

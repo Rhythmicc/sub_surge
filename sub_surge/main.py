@@ -1,6 +1,5 @@
 from QuickProject.Commander import Commander
 from QuickProject import QproDefaultConsole, QproInfoString, QproErrorString, _ask
-import sys
 import os
 from pathlib import Path
 
@@ -43,6 +42,7 @@ def save_user_config(config):
 
 def check_first_run():
     """检查是否首次运行，如果是则引导用户配置"""
+    import pyotp
     config_dir = Path.home() / ".sub-surge"
     config_file = config_dir / "config.json"
     first_run_marker = config_dir / ".initialized"
@@ -60,6 +60,25 @@ def check_first_run():
     QproDefaultConsole.print(QproInfoString, f"配置目录已创建: {config_dir}")
     QproDefaultConsole.print(QproInfoString, f"配置文件路径: {config_file}")
     QproDefaultConsole.print(QproInfoString, f"日志目录: {config_dir / 'logs'}")
+    
+    # 生成 TOTP 密钥
+    totp_secret = pyotp.random_base32()
+    user_config = load_user_config()
+    user_config['totp_secret'] = totp_secret
+    user_config['totp_binded'] = False
+    
+    QproDefaultConsole.print(QproInfoString, "")
+    QproDefaultConsole.print(QproInfoString, "=" * 60)
+    QproDefaultConsole.print(QproInfoString, "🔐 2FA 认证已启用（首次运行必需）")
+    QproDefaultConsole.print(QproInfoString, "")
+    QproDefaultConsole.print(QproInfoString, "首次访问 Web 界面时，系统将显示二维码")
+    QproDefaultConsole.print(QproInfoString, "请使用您的身份验证器应用（如 Google Authenticator、")
+    QproDefaultConsole.print(QproInfoString, "Microsoft Authenticator 等）扫描二维码进行绑定")
+    QproDefaultConsole.print(QproInfoString, "")
+    QproDefaultConsole.print(QproInfoString, "如果无法扫码，可以手动输入以下密钥：")
+    QproDefaultConsole.print(QproInfoString, f"密钥: {totp_secret}")
+    QproDefaultConsole.print(QproInfoString, "=" * 60)
+    QproDefaultConsole.print(QproInfoString, "")
     
     # 询问是否需要修改配置目录
     change_dir = _ask({
@@ -94,7 +113,6 @@ def check_first_run():
     try:
         port = int(default_port)
         if 1 <= port <= 65535:
-            user_config = load_user_config()
             user_config['default_port'] = port
             save_user_config(user_config)
             QproDefaultConsole.print(QproInfoString, f"已设置默认端口为: {port}")

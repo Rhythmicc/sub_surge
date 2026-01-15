@@ -6,9 +6,37 @@ let analysisResult = null;  // 存储分析结果
 let aiModelsCache = null;  // AI模型列表缓存
 let isEditingAirport = false;  // 是否处于编辑机场模式
 let editingAirportName = null;  // 当前编辑的机场名称
+let authToken = null;  // 认证令牌
 
 // API基础URL（自动使用当前页面的地址和端口）
 const API_BASE = window.location.origin;
+
+// 从 localStorage 中恢复 token
+function loadAuthToken() {
+    authToken = localStorage.getItem('sub-surge-2fa-token');
+    return authToken;
+}
+
+// 保存 token 到 localStorage
+function saveAuthToken(token) {
+    authToken = token;
+    localStorage.setItem('sub-surge-2fa-token', token);
+}
+
+// 清除 token
+function clearAuthToken() {
+    authToken = null;
+    localStorage.removeItem('sub-surge-2fa-token');
+}
+
+// 创建带有认证的 fetch 请求头
+function getAuthHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    return headers;
+}
 
 // 工具函数
 function showAlert(message, type = 'success') {
@@ -23,6 +51,161 @@ function showAlert(message, type = 'success') {
     }, 3000);
 }
 
+// 检查并显示 2FA 绑定模态框
+async function checkAndShow2FAModal() {
+    // 如果有 token，先验证其有效性
+    if (loadAuthToken()) {
+        try {
+            // 尝试用现有 token 访问一个需要认证的接口（用 airports 接口测试）
+            const testResponse = await fetch(`${API_BASE}/api/airports`, {
+                headers: getAuthHeaders()
+            });
+            
+            if (testResponse.ok) {
+                // Token 有效，无需显示模态框
+                return;
+            }
+            // Token 无效，清除并继续显示验证框
+            clearAuthToken();
+        } catch (error) {
+            console.error('Token 验证失败:', error);
+            clearAuthToken();
+        }
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/2fa/status`);
+        const data = await response.json();
+        
+        if (!data.binded) {
+            // 首次绑定，显示完整的二维码和密钥
+            await setup2FA(false);
+        } else {
+            // 已绑定但token失效，只显示验证码输入框
+            await setup2FA(true);
+        }
+    } catch (error) {
+        console.error('检查 2FA 绑定状态失败:', error);
+    }
+}
+
+// 设置 2FA（获取二维码和密钥）
+// alreadyBinded: 是否已经绑定过（true=只显示验证码输入，false=显示完整绑定界面）
+async function setup2FA(alreadyBinded = false) {
+    try {
+        const qrCodeContainer = document.getElementById('qr-code-container');
+        const manualSecretContainer = document.getElementById('manual-secret-container');
+        const modal = document.getElementById('2fa-bind-modal');
+        const modalTitle = document.getElementById('2fa-modal-title');
+        const modalDescription = document.getElementById('2fa-modal-description');
+        
+        if (alreadyBinded) {
+            // 已绑定，只需要重新验证
+            if (qrCodeContainer) qrCodeContainer.style.display = 'none';
+            if (manualSecretContainer) manualSecretContainer.style.display = 'none';
+            
+            // 更新标题和说明
+            if (modalTitle) {
+                modalTitle.textContent = '🔒 请输入验证码';
+            }
+            if (modalDescription) {
+                modalDescription.innerHTML = '会话已过期，请重新验证。<br>请从您的身份验证器应用中获取当前的 6 位验证码。';
+            }
+        } else {
+            // 首次绑定，显示完整界面
+            if (qrCodeContainer) qrCodeContainer.style.display = 'inline-block';
+            if (manualSecretContainer) manualSecretContainer.style.display = 'block';
+            
+            // 设置首次绑定的标题和说明
+            if (modalTitle) {
+                modalTitle.textContent = '🔐 首次使用需要绑定 2FA';
+            }
+            if (modalDescription) {
+                modalDescription.innerHTML = '为了您的账户安全，系统采用双因素认证（2FA）。<br>请使用身份验证器应用扫描下方二维码。';
+            }
+            
+            // 获取并显示二维码和密钥
+            const response = await fetch(`${API_BASE}/api/2fa/setup`);
+            const data = await response.json();
+            
+            // 设置二维码
+            const qrCodeImg = document.getElementById('qr-code-image');
+            const manualSecret = document.getElementById('manual-secret');
+            
+            if (qrCodeImg && data.qr_code) {
+                qrCodeImg.src = data.qr_code;
+            }
+            
+            if (manualSecret && data.secret) {
+                manualSecret.textContent = data.secret;
+            }
+        }
+        
+        if (modal) {
+            modal.style.display = 'flex';
+            // 获取焦点
+            setTimeout(() => {
+                document.getElementById('2fa-code-input')?.focus();
+            }, 100);
+        }
+    } catch (error) {
+        console.error('获取 2FA 设置失败:', error);
+        showAlert('获取 2FA 设置失败：' + error.message, 'error');
+    }
+}
+
+// 验证 2FA 验证码
+async function verify2FA() {
+    const codeInput = document.getElementById('2fa-code-input');
+    const code = codeInput.value.trim();
+    
+    if (!code || code.length !== 6) {
+        showAlert('请输入 6 位验证码', 'error');
+        return;
+    }
+    
+    const verifyBtn = document.getElementById('verify-2fa-btn');
+    const originalText = verifyBtn.textContent;
+    verifyBtn.textContent = '验证中...';
+    verifyBtn.disabled = true;
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/2fa/verify`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ code: code })
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            // 保存返回的 token
+            if (result.token) {
+                saveAuthToken(result.token);
+            }
+            showAlert('2FA 绑定成功！', 'success');
+            // 隐藏模态框
+            const modal = document.getElementById('2fa-bind-modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+            // 重新加载应用
+            loadAirports();
+        } else {
+            const error = await response.json();
+            showAlert('验证失败：' + error.detail, 'error');
+            codeInput.value = '';
+            codeInput.focus();
+        }
+    } catch (error) {
+        showAlert('验证失败：' + error.message, 'error');
+    } finally {
+        verifyBtn.textContent = originalText;
+        verifyBtn.disabled = false;
+    }
+}
+
 // 加载AI模型列表
 async function loadAIModels() {
     console.log('loadAIModels 被调用');
@@ -34,7 +217,9 @@ async function loadAIModels() {
     
     try {
         console.log('从API获取模型列表');
-        const response = await fetch(`${API_BASE}/api/ai-models`);
+        const response = await fetch(`${API_BASE}/api/ai-models`, {
+            headers: getAuthHeaders()
+        });
         const models = await response.json();
         console.log('获取到模型数量:', models.length);
         aiModelsCache = models;
@@ -217,7 +402,9 @@ document.getElementById('btn-add-airport-trigger')?.addEventListener('click', ()
 // 加载机场列表
 async function loadAirports() {
     try {
-        const response = await fetch(`${API_BASE}/api/airports`);
+        const response = await fetch(`${API_BASE}/api/airports`, {
+            headers: getAuthHeaders()
+        });
         const data = await response.json();
         globalConfig = data;
         
@@ -350,7 +537,8 @@ async function deleteSelectedAirports() {
         const name = checkbox.value;
         try {
             const response = await fetch(`${API_BASE}/api/airports/${name}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: getAuthHeaders()
             });
             if (response.ok) successCount++;
         } catch (error) {
@@ -379,7 +567,10 @@ async function checkAirportsHealth(names) {
     try {
         const response = await fetch(`${API_BASE}/api/check-availabilities`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
+            },
             body: JSON.stringify({ names: names })
         });
         
@@ -430,7 +621,8 @@ document.getElementById('preview-btn').addEventListener('click', async () => {
         const response = await fetch(`${API_BASE}/api/preview`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
             },
             body: JSON.stringify({ url })
         });
@@ -861,7 +1053,9 @@ async function deleteAirport(name) {
 // 加载全局配置
 async function loadGlobalConfig() {
     try {
-        const response = await fetch(`${API_BASE}/api/config`);
+        const response = await fetch(`${API_BASE}/api/config`, {
+            headers: getAuthHeaders()
+        });
         const data = await response.json();
         
         document.getElementById('txcos_domain').value = data.txcos_domain || '';
@@ -941,9 +1135,7 @@ document.getElementById('global-config-form').addEventListener('submit', async (
     try {
         const response = await fetch(`${API_BASE}/api/config`, {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: getAuthHeaders(),
             body: JSON.stringify(data)
         });
         
@@ -983,7 +1175,9 @@ async function refreshAIModels() {
 // 导出配置
 document.getElementById('export-btn').addEventListener('click', async () => {
     try {
-        const response = await fetch(`${API_BASE}/api/config/export`);
+        const response = await fetch(`${API_BASE}/api/config/export`, {
+            headers: getAuthHeaders()
+        });
         const data = await response.json();
         
         const blob = new Blob([JSON.stringify(data, null, 2)], { 
@@ -1101,7 +1295,9 @@ document.getElementById('import-btn').addEventListener('click', async () => {
 // 加载配置预览
 async function loadConfigPreview() {
     try {
-        const response = await fetch(`${API_BASE}/api/config`);
+        const response = await fetch(`${API_BASE}/api/config`, {
+            headers: getAuthHeaders()
+        });
         const data = await response.json();
         
         const preview = document.getElementById('config-preview');
@@ -1119,7 +1315,9 @@ let logAutoRefreshInterval = null;
 async function loadLogs() {
     try {
         const lines = document.getElementById('log-lines').value;
-        const response = await fetch(`${API_BASE}/api/logs?lines=${lines}`);
+        const response = await fetch(`${API_BASE}/api/logs?lines=${lines}`, {
+            headers: getAuthHeaders()
+        });
         const data = await response.json();
         
         const container = document.getElementById('logs-container');
@@ -1178,6 +1376,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', () => {
-    loadAirports();
-    loadGlobalConfig();
+    // 为 2FA 验证码输入框添加 Enter 键监听
+    const codeInput = document.getElementById('2fa-code-input');
+    if (codeInput) {
+        codeInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                verify2FA();
+            }
+        });
+        
+        // 自动格式化输入（只允许数字）
+        codeInput.addEventListener('input', (e) => {
+            e.target.value = e.target.value.replace(/[^0-9]/g, '');
+        });
+    }
+    
+    // 首先检查 2FA 绑定状态
+    checkAndShow2FAModal().then(() => {
+        loadAirports();
+        loadGlobalConfig();
+    });
 });

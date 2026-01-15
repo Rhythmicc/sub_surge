@@ -1,8 +1,7 @@
-"""
-FastAPI后端服务
+"""FastAPI后端服务
 提供REST API接口，用于管理机场配置
 """
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -12,7 +11,7 @@ import os
 import logging
 import asyncio
 from datetime import datetime
-import threading
+import json
 
 from .config_manager import ConfigManager
 from .config_schema import AirportConfig, GlobalConfig
@@ -64,6 +63,116 @@ if os.path.exists(web_dir):
 auto_update_task = None
 auto_update_running = False
 
+# 2FA 认证
+import secrets
+import hashlib
+from datetime import datetime, timedelta
+import pyotp
+import qrcode
+from io import BytesIO
+import base64
+
+totp_secret = None  # TOTP 密钥
+totp_binded = False  # 是否已绑定 2FA
+valid_sessions = {}  # 有效的会话令牌，格式：{token: expiry_time}
+
+
+def get_config_dir():
+    """获取配置目录路径"""
+    from pathlib import Path
+    custom_dir = os.environ.get('SUB_SURGE_CONFIG_DIR')
+    if custom_dir:
+        config_dir = Path(custom_dir)
+    else:
+        config_dir = Path.home() / ".sub-surge"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir
+
+
+def ensure_totp_secret():
+    """确保 TOTP 密钥存在，如果不存在则生成新的"""
+    global totp_secret, totp_binded
+    try:
+        config_dir = get_config_dir()
+        user_config_path = config_dir / "user_config.json"
+        
+        # 加载或创建配置文件
+        if user_config_path.exists():
+            with open(user_config_path, 'r', encoding='utf-8') as f:
+                user_config = json.load(f)
+        else:
+            user_config = {}
+        
+        # 检查 TOTP 密钥是否存在
+        if 'totp_secret' not in user_config or not user_config['totp_secret']:
+            # 生成新的 TOTP 密钥
+            new_totp_secret = pyotp.random_base32()
+            user_config['totp_secret'] = new_totp_secret
+            user_config['totp_created_at'] = datetime.now().isoformat()
+            user_config['totp_binded'] = False
+            
+            # 保存配置文件
+            with open(user_config_path, 'w', encoding='utf-8') as f:
+                json.dump(user_config, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"TOTP 密钥不存在，已生成新密钥")
+            totp_secret = new_totp_secret
+            totp_binded = False
+        else:
+            totp_secret = user_config.get('totp_secret')
+            totp_binded = user_config.get('totp_binded', False)
+    except Exception as e:
+        logger.error(f"确保 TOTP 密钥失败: {e}")
+
+
+def load_totp_config():
+    """从配置文件加载 TOTP 配置"""
+    global totp_secret, totp_binded
+    ensure_totp_secret()
+
+
+def generate_session_token():
+    """生成一个新的会话令牌"""
+    return secrets.token_urlsafe(32)
+
+
+def verify_session_token(token: str) -> bool:
+    """验证会话令牌是否有效"""
+    global valid_sessions
+    
+    if not token or token not in valid_sessions:
+        return False
+    
+    # 检查令牌是否过期
+    if datetime.now() > valid_sessions[token]:
+        del valid_sessions[token]
+        return False
+    
+    return True
+
+
+def generate_qr_code(data: str) -> str:
+    """生成二维码并返回 base64 编码的图片"""
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = BytesIO()
+    img.save(buffer, format='PNG')
+    buffer.seek(0)
+    img_base64 = base64.b64encode(buffer.getvalue()).decode()
+    return f"data:image/png;base64,{img_base64}"
+
+
+# 应用启动时加载 TOTP 配置
+load_totp_config()
+
 
 # 请求模型
 class AddAirportRequest(BaseModel):
@@ -78,6 +187,11 @@ class AddAirportRequest(BaseModel):
     info_keywords: Optional[Dict[str, List[str]]] = None
 
 
+class Verify2FARequest(BaseModel):
+    """验证 2FA 验证码请求"""
+    code: str
+
+
 class UpdateGlobalConfigRequest(BaseModel):
     txcos_domain: Optional[str] = None
     interval: Optional[int] = None
@@ -88,7 +202,93 @@ class UpdateGlobalConfigRequest(BaseModel):
     ai_model: Optional[str] = None
 
 
-# API路由
+# 2FA 认证相关接口
+@app.get("/api/2fa/status")
+async def get_2fa_status():
+    """获取 2FA 绑定状态"""
+    global totp_binded
+    return {"binded": totp_binded}
+
+
+@app.get("/api/2fa/setup")
+async def setup_2fa():
+    """获取 2FA 设置信息（密钥和二维码）"""
+    global totp_secret, totp_binded
+    
+    # 如果已经绑定，不允许重新设置
+    if totp_binded:
+        raise HTTPException(status_code=400, detail="2FA 已绑定，请先解绑")
+    
+    # 确保密钥存在
+    ensure_totp_secret()
+    
+    # 生成 TOTP URI
+    totp = pyotp.TOTP(totp_secret)
+    app_name = "SubSurge"
+    user_identifier = "user@subsurge"  # 可以自定义
+    
+    provisioning_uri = totp.provisioning_uri(
+        name=user_identifier,
+        issuer_name=app_name
+    )
+    
+    # 生成二维码
+    qr_code = generate_qr_code(provisioning_uri)
+    
+    return {
+        "secret": totp_secret,
+        "qr_code": qr_code,
+        "provisioning_uri": provisioning_uri
+    }
+
+
+@app.post("/api/2fa/verify")
+async def verify_2fa(request: Verify2FARequest):
+    """验证 2FA 验证码并绑定"""
+    global totp_secret, totp_binded, valid_sessions
+    
+    if not totp_secret:
+        raise HTTPException(status_code=400, detail="TOTP 密钥不存在")
+    
+    # 验证 TOTP 代码
+    totp = pyotp.TOTP(totp_secret)
+    if not totp.verify(request.code, valid_window=1):
+        raise HTTPException(status_code=401, detail="验证码错误")
+    
+    # 如果尚未绑定，则标记为已绑定
+    if not totp_binded:
+        try:
+            config_dir = get_config_dir()
+            user_config_path = config_dir / "user_config.json"
+            
+            with open(user_config_path, 'r', encoding='utf-8') as f:
+                user_config = json.load(f)
+            
+            user_config['totp_binded'] = True
+            user_config['totp_binded_at'] = datetime.now().isoformat()
+            
+            with open(user_config_path, 'w', encoding='utf-8') as f:
+                json.dump(user_config, f, indent=2, ensure_ascii=False)
+            
+            totp_binded = True
+            logger.info("2FA 已成功绑定")
+        except Exception as e:
+            logger.error(f"保存 2FA 绑定状态失败: {e}")
+            raise HTTPException(status_code=500, detail=f"绑定失败: {str(e)}")
+    
+    # 生成会话令牌
+    session_token = generate_session_token()
+    expiry = datetime.now() + timedelta(days=30)
+    valid_sessions[session_token] = expiry
+    
+    logger.info("2FA 验证成功，已生成会话令牌")
+    return {
+        "message": "验证成功",
+        "token": session_token
+    }
+
+
+# API 路由
 @app.get("/")
 async def root():
     """返回前端页面"""
@@ -117,14 +317,29 @@ async def get_favicon():
     raise HTTPException(status_code=404, detail="File not found")
 
 
+def verify_token_from_request(request: Request) -> str:
+    """验证请求中的令牌，如果无效则抛出异常"""
+    auth_header = request.headers.get("Authorization", "")
+    
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="缺少授权令牌")
+    
+    token = auth_header[7:]  # 去掉 "Bearer " 前缀
+    
+    if not verify_session_token(token):
+        raise HTTPException(status_code=401, detail="令牌无效或已过期")
+    
+    return token
+
+
 @app.get("/api/config")
-async def get_config():
+async def get_config(token: str = Depends(verify_token_from_request)):
     """获取全局配置"""
     return config_manager.get_global_config().dict()
 
 
 @app.put("/api/config")
-async def update_config(request: UpdateGlobalConfigRequest):
+async def update_config(request: UpdateGlobalConfigRequest, token: str = Depends(verify_token_from_request)):
     """更新全局配置"""
     update_data = request.dict(exclude_none=True)
     if config_manager.update_global_config(**update_data):
@@ -133,13 +348,13 @@ async def update_config(request: UpdateGlobalConfigRequest):
 
 
 @app.get("/api/config/export")
-async def export_config():
+async def export_config(token: str = Depends(verify_token_from_request)):
     """导出配置"""
     return config_manager.get_global_config().dict()
 
 
 @app.post("/api/config/import")
-async def import_config(config_data: GlobalConfig):
+async def import_config(config_data: GlobalConfig, token: str = Depends(verify_token_from_request)):
     """导入配置"""
     try:
         config_manager.config = config_data
@@ -150,13 +365,13 @@ async def import_config(config_data: GlobalConfig):
 
 
 @app.get("/api/airports")
-async def list_airports():
+async def list_airports(token: str = Depends(verify_token_from_request)):
     """获取所有机场配置"""
     return config_manager.get_global_config().dict()
 
 
 @app.get("/api/airports/{name}")
-async def get_airport(name: str):
+async def get_airport(name: str, token: str = Depends(verify_token_from_request)):
     """获取指定机场配置"""
     airport = config_manager.get_airport(name)
     if not airport:
@@ -165,7 +380,7 @@ async def get_airport(name: str):
 
 
 @app.post("/api/airports")
-async def add_airport(request: AddAirportRequest):
+async def add_airport(request: AddAirportRequest, token: str = Depends(verify_token_from_request)):
     """添加机场配置（基于AI分析结果）"""
     # 检查机场是否已存在
     if config_manager.get_airport(request.name):
@@ -200,7 +415,7 @@ async def add_airport(request: AddAirportRequest):
 
 
 @app.put("/api/airports/{name}")
-async def update_airport_config(name: str, request: AddAirportRequest):
+async def update_airport_config(name: str, request: AddAirportRequest, token: str = Depends(verify_token_from_request)):
     """更新机场配置"""
     if not config_manager.get_airport(name):
         raise HTTPException(status_code=404, detail="机场不存在")
@@ -234,7 +449,7 @@ async def update_airport_config(name: str, request: AddAirportRequest):
 
 
 @app.delete("/api/airports/{name}")
-async def delete_airport(name: str):
+async def delete_airport(name: str, token: str = Depends(verify_token_from_request)):
     """删除机场配置"""
     if config_manager.remove_airport(name):
         return {"message": "机场删除成功"}
@@ -242,7 +457,7 @@ async def delete_airport(name: str):
 
 
 @app.post("/api/airports/{name}/update")
-async def update_airport_subscription(name: str):
+async def update_airport_subscription(name: str, token: str = Depends(verify_token_from_request)):
     """更新机场订阅"""
     airport = config_manager.get_airport(name)
     if not airport:
@@ -258,7 +473,7 @@ async def update_airport_subscription(name: str):
 
 
 @app.post("/api/merge")
-async def merge_subscriptions(request: dict):
+async def merge_subscriptions(request: dict, token: str = Depends(verify_token_from_request)):
     """合并订阅"""
     # 从请求体获取要合并的机场列表，如果没有则使用全局配置
     airports_to_merge = request.get("airports") or config_manager.get_global_config().merge_airports
@@ -278,7 +493,7 @@ async def merge_subscriptions(request: dict):
 
 
 @app.post("/api/analyze")
-async def analyze_subscription_url(request: dict):
+async def analyze_subscription_url(request: dict, token: str = Depends(verify_token_from_request)):
     """
     分析订阅链接或订阅内容，自动推荐配置
     
@@ -317,7 +532,7 @@ async def analyze_subscription_url(request: dict):
 
 
 @app.post("/api/preview")
-async def preview_subscription(request: dict):
+async def preview_subscription(request: dict, token: str = Depends(verify_token_from_request)):
     """
     预览订阅内容（下载并解码）
     
@@ -404,7 +619,7 @@ class CheckAvailabilityRequest(BaseModel):
     names: List[str]
 
 @app.post("/api/check-availabilities")
-async def check_availabilities(request: CheckAvailabilityRequest):
+async def check_availabilities(request: CheckAvailabilityRequest, token: str = Depends(verify_token_from_request)):
     """检测机场配置链接的连通性"""
     global_conf = config_manager.get_global_config()
     domain = global_conf.txcos_domain
@@ -451,7 +666,7 @@ async def check_availabilities(request: CheckAvailabilityRequest):
 
 
 @app.get("/api/ai-models")
-async def get_ai_models():
+async def get_ai_models(token: str = Depends(verify_token_from_request)):
     """
     获取OpenRouter可用的AI模型列表
     优先从缓存获取，缓存1小时
@@ -679,7 +894,7 @@ async def health_check():
 
 
 @app.get("/api/logs")
-async def get_logs(lines: int = 100):
+async def get_logs(lines: int = 100, token: str = Depends(verify_token_from_request)):
     """获取最近的日志"""
     try:
         log_file = log_dir / 'sub-surge.log'
