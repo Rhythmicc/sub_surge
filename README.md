@@ -1,7 +1,7 @@
 # Sub-Surge
 
 <div align="center">
-   <img src="https://raw.githubusercontent.com/Rhythmicc/sub-surge/main/sub-surge/web/logo.png" alt="Sub-Surge Logo" width="120" />
+   <img src="/sub_surge/web/logo.png" alt="Sub-Surge Logo" width="120" />
   <p><strong>Config-driven Surge Subscription Manager with Web UI</strong></p>
   <p>智能、高效的 Surge 订阅配置管理工具</p>
 </div>
