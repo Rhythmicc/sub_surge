@@ -127,6 +127,16 @@ def check_first_run():
     QproDefaultConsole.print(QproInfoString, "初始化完成！现在启动服务...")
 
 
+def get_pid_file_path():
+    """获取 PID 文件路径"""
+    custom_dir = os.environ.get('SUB_SURGE_CONFIG_DIR')
+    if custom_dir:
+        config_dir = Path(custom_dir)
+    else:
+        config_dir = Path.home() / ".sub-surge"
+    return config_dir / "server.pid"
+
+
 @app.command()
 def serve(host: str = "0.0.0.0", port: int = -1):
     """
@@ -145,6 +155,10 @@ def serve(host: str = "0.0.0.0", port: int = -1):
     
     QproDefaultConsole.print(QproInfoString, f"启动Web管理界面: http://{host}:{port}")
     
+    # 写入 PID 文件
+    pid_file = get_pid_file_path()
+    pid_file.write_text(str(os.getpid()), encoding='utf-8')
+    
     try:
         from .api import start_server
         start_server(host, port)
@@ -152,6 +166,41 @@ def serve(host: str = "0.0.0.0", port: int = -1):
         QproDefaultConsole.print(QproInfoString, "服务已停止")
     except Exception as e:
         QproDefaultConsole.print(QproErrorString, f"启动失败: {e}")
+    finally:
+        # 清理 PID 文件
+        if pid_file.exists():
+            pid_file.unlink()
+
+
+@app.command()
+def stop():
+    """
+    终止正在运行的Web管理服务
+    """
+    import signal
+    
+    pid_file = get_pid_file_path()
+    
+    if not pid_file.exists():
+        QproDefaultConsole.print(QproErrorString, "未找到运行中的服务（PID 文件不存在）")
+        return
+    
+    try:
+        pid = int(pid_file.read_text(encoding='utf-8').strip())
+    except Exception:
+        QproDefaultConsole.print(QproErrorString, "PID 文件内容无效")
+        pid_file.unlink(missing_ok=True)
+        return
+    
+    try:
+        os.kill(pid, signal.SIGTERM)
+        QproDefaultConsole.print(QproInfoString, f"已发送终止信号（PID: {pid}），服务正在关闭...")
+        pid_file.unlink(missing_ok=True)
+    except ProcessLookupError:
+        QproDefaultConsole.print(QproErrorString, f"进程 {pid} 不存在，可能服务已关闭")
+        pid_file.unlink(missing_ok=True)
+    except PermissionError:
+        QproDefaultConsole.print(QproErrorString, f"无权限终止进程 {pid}，请检查权限或手动执行: kill {pid}")
 
 
 @app.command()
