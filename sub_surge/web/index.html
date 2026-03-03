@@ -675,6 +675,47 @@
                         <button type="reset" class="btn btn-secondary">重置表单</button>
                     </div>
                 </form>
+
+                <!-- 配置预览区域（位于表单外，独立展示） -->
+                <div class="config-section" style="margin-top: 30px; border-top: 2px dashed #e0e0e0; padding-top: 24px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h3 style="margin: 0; color: #444;">📋 配置预览</h3>
+                        <button type="button" class="btn btn-secondary" id="btn-airport-config-preview"
+                                onclick="loadAirportConfigPreview()"
+                                style="padding: 7px 16px; font-size: 14px;">
+                            👁️ 生成预览
+                        </button>
+                    </div>
+
+                    <p style="font-size: 13px; color: #666; margin-bottom: 14px; line-height: 1.6;">
+                        点击"生成预览"，系统将基于<strong>当前填写的机场信息</strong>与<strong>全局规则集配置</strong>，
+                        生成 Surge 配置文件的结构预览。<br>
+                        <span style="color: #999;">注意：节点内容需要在添加并执行"更新"后才能真实填入，此处以占位符代替。</span>
+                    </p>
+
+                    <div id="airport-config-preview-wrapper" style="display: none;">
+                        <!-- 摘要信息栏 -->
+                        <div id="airport-config-preview-info"
+                             style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;
+                                    padding: 12px 16px; background: #e3f2fd; border-radius: 8px; font-size: 13px;">
+                        </div>
+
+                        <!-- 配置文本框 -->
+                        <div style="position: relative;">
+                            <textarea id="airport-config-preview-content"
+                                      style="width: 100%; min-height: 480px; font-family: 'JetBrains Mono', Menlo, Monaco, Consolas, monospace;
+                                             font-size: 12px; line-height: 1.6; padding: 14px; border: 1px solid #ccc;
+                                             border-radius: 8px; background: #1e1e2e; color: #cdd6f4; resize: vertical;"
+                                      readonly spellcheck="false"></textarea>
+                            <button onclick="copyAirportConfigPreview()"
+                                    style="position: absolute; top: 10px; right: 12px; padding: 4px 10px;
+                                           font-size: 12px; background: rgba(255,255,255,0.15); color: #cdd6f4;
+                                           border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; cursor: pointer;">
+                                📋 复制
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- 规则集管理标签页 -->

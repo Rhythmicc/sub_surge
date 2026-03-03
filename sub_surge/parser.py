@@ -39,10 +39,12 @@ class ConfigDrivenParser:
         return self.country_pattern.sub(replacer, text)
     
     def should_exclude_proxy(self, line: str) -> bool:
-        """判断是否应该排除该代理节点"""
-        line_lower = line.lower()
+        """判断是否应该排除该代理节点（仅匹配节点名称部分）"""
+        # 仅取 '=' 前的节点名称部分进行匹配，避免误过滤服务器地址、密码等字段
+        name = line.split('=', 1)[0].strip() if '=' in line else line
+        name_lower = name.lower()
         for keyword in self.parser_config.exclude_keywords:
-            if keyword.lower() in line_lower:
+            if keyword.lower() in name_lower:
                 return True
         return False
     

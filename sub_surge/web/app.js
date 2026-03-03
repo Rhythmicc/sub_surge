@@ -394,12 +394,22 @@ document.getElementById('btn-add-airport-trigger')?.addEventListener('click', ()
     const form = document.getElementById('add-airport-form');
     form.reset();
     document.getElementById('name').disabled = false;
+
+    // 隐藏配置预览区域
+    const previewWrapper = document.getElementById('airport-config-preview-wrapper');
+    if (previewWrapper) previewWrapper.style.display = 'none';
     
     // 切换到添加机场标签页（触发隐藏的标签点击）
     document.querySelector('.tab[data-tab="add-airport"]').click();
 });
 
-// 加载机场列表
+// 表单重置按钮同步隐藏配置预览
+document.getElementById('add-airport-form')?.addEventListener('reset', () => {
+    const previewWrapper = document.getElementById('airport-config-preview-wrapper');
+    if (previewWrapper) previewWrapper.style.display = 'none';
+});
+
+
 async function loadAirports() {
     try {
         const response = await fetch(`${API_BASE}/api/airports`, {
@@ -1343,7 +1353,82 @@ async function loadConfigPreview() {
     }
 }
 
-// 日志相关功能
+// 加载添加机场页的配置预览
+async function loadAirportConfigPreview() {
+    const btn = document.getElementById('btn-airport-config-preview');
+    const wrapper = document.getElementById('airport-config-preview-wrapper');
+    const infoDiv = document.getElementById('airport-config-preview-info');
+    const contentArea = document.getElementById('airport-config-preview-content');
+
+    // 读取表单当前值
+    const name = (document.getElementById('name')?.value || '').trim() || '示例机场';
+    const url = (document.getElementById('url')?.value || '').trim();
+    const key = (document.getElementById('key')?.value || '').trim() || 'airport/example.conf';
+    const resetDay = parseInt(document.getElementById('reset_day')?.value) || 30;
+
+    // 简单提示必填
+    if (!url) {
+        showAlert('请先填写订阅链接以生成更准确的预览', 'error');
+    }
+
+    // 按钮 loading 状态
+    btn.disabled = true;
+    btn.textContent = '⏳ 生成中...';
+
+    try {
+        const response = await fetch(`${API_BASE}/api/airports/config-preview`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ name, url, key, reset_day: resetDay })
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || '请求失败');
+        }
+
+        const data = await response.json();
+
+        // 展示摘要信息
+        infoDiv.innerHTML = `
+            <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
+                <span>🔖 <strong>机场名称：</strong>${name}</span>
+                <span>📦 <strong>存储路径：</strong><code style="background:#c8e6fa;padding:2px 6px;border-radius:4px;font-size:12px;">${key}</code></span>
+                <span>🔗 <strong>订阅URL：</strong><code style="background:#c8e6fa;padding:2px 6px;border-radius:4px;font-size:12px;word-break:break-all;">${data.cos_url}</code></span>
+                <span>📋 <strong>已启用规则：</strong><strong style="color:#1976D2;">${data.rule_count}</strong> 条</span>
+                <span>⏱ <strong>更新间隔：</strong>${data.update_interval}s</span>
+            </div>
+            <p style="margin-top:10px;margin-bottom:0;color:#555;font-size:12px;">
+                ⚠️ 以下为<strong>结构预览</strong>：节点占位符将在执行「更新」后替换为真实节点，rules 基于当前全局规则集。
+            </p>
+        `;
+
+        // 展示配置文本
+        contentArea.value = data.preview;
+
+        // 显示预览区域
+        wrapper.style.display = 'block';
+        wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    } catch (error) {
+        showAlert('生成预览失败: ' + error.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '👁️ 生成预览';
+    }
+}
+
+// 复制配置预览内容到剪贴板
+function copyAirportConfigPreview() {
+    const contentArea = document.getElementById('airport-config-preview-content');
+    if (!contentArea || !contentArea.value) {
+        showAlert('暂无内容可复制', 'error');
+        return;
+    }
+    copyToClipboard(contentArea.value);
+}
+
+
 let logAutoRefreshInterval = null;
 
 // 加载日志

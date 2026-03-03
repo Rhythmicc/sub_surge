@@ -707,6 +707,115 @@ async def preview_subscription(request: dict, token: str = Depends(verify_token_
         raise HTTPException(status_code=500, detail=f"预览失败: {str(e)}")
 
 
+@app.post("/api/airports/config-preview")
+async def get_airport_config_preview(request: dict, token: str = Depends(verify_token_from_request)):
+    """
+    根据当前规则生成机场配置预览（不下载订阅，使用占位符代替真实节点）
+
+    请求体:
+    {
+        "name": "机场名称",
+        "url": "订阅链接",
+        "key": "存储路径",
+        "reset_day": 30
+    }
+
+    返回:
+    {
+        "preview": "完整的Surge配置预览文本",
+        "rule_count": int,
+        "cos_url": "将生成的订阅URL"
+    }
+    """
+    import urllib.parse
+    from .template import traffic_module_template, conf_template
+
+    global_config = config_manager.get_global_config()
+
+    name = request.get("name") or "示例机场"
+    url = request.get("url") or ""
+    key = request.get("key") or "airport/example.conf"
+    reset_day = int(request.get("reset_day") or 30)
+
+    # 生成 COS URL
+    if global_config.txcos_domain:
+        cos_url = f"{global_config.txcos_domain.rstrip('/')}/{key}"
+    else:
+        cos_url = f"<未配置COS域名>/{key}"
+
+    update_interval = global_config.interval or 43200
+
+    # 生成 Panel 和 Script 部分
+    module_panel = traffic_module_template['panel'].format(
+        name=name, update_interval=update_interval
+    )
+    encoded_url = urllib.parse.quote(url, safe="") if url else "%3C%E8%AE%A2%E9%98%85%E9%93%BE%E6%8E%A5%3E"
+    module_script = traffic_module_template['script'].format(
+        name=name,
+        update_interval=update_interval,
+        url=encoded_url,
+        reset=reset_day,
+        color="#5AC8FA"
+    )
+
+    # 生成规则集部分（基于当前全局配置中已启用的规则）
+    rule_sets_lines = []
+    enabled_rules = []
+    for rule in global_config.rule_sets:
+        if rule.enabled:
+            rule_sets_lines.append(
+                f"RULE-SET,{rule.url},{rule.policy},update-interval={rule.update_interval}"
+            )
+            enabled_rules.append({"name": rule.name, "policy": rule.policy})
+    rule_sets_str = "\n".join(rule_sets_lines) if rule_sets_lines else "# 暂无规则集配置"
+
+    # 地区分组（使用系统默认区域）
+    region_list = ["🇭🇰 香港", "🇯🇵 日本", "🇺🇸 美国", "🇸🇬 狮城", "🇬🇧 英国", "🇨🇳 台湾"]
+    regions_str = ",".join(region_list)
+
+    region_strategy = "\n".join([
+        f"{r} = select,{r}最佳,{r}智能,🔧 手动切换"
+        for r in region_list
+    ])
+    region_auto = "\n".join(
+        [f"{r}最佳 = url-test,<{r}节点...>,url=http://www.gstatic.com/generate_204,interval=300,tolerance=50"
+         for r in region_list]
+        + [f"{r}智能 = smart,<{r}节点...>,persistent=1"
+           for r in region_list]
+    )
+
+    # 代理节点占位符
+    placeholder_proxies = (
+        f"# ↓ 此处将自动填入来自 [{name}] 的节点（更新订阅后生成）\n"
+        f"# 示例：香港 01 = ss, hk.example.com, 443, encrypt-method=chacha20-ietf-poly1305, password=xxx"
+    )
+    placeholder_one_line = f"# {name} 的所有节点（逗号分隔）"
+
+    try:
+        preview_config = conf_template.format(
+            cos_url=cos_url,
+            update_interval=update_interval,
+            module_panel=module_panel,
+            module_script=module_script,
+            proxies=placeholder_proxies,
+            proxies_one_line=placeholder_one_line,
+            regions=regions_str,
+            region_strategy=region_strategy,
+            region_auto=region_auto,
+            rule_sets=rule_sets_str,
+            host="# 将从 GitHub 自动加载最新 Hosts 配置"
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=500, detail=f"配置模板渲染失败: {str(e)}")
+
+    return {
+        "preview": preview_config,
+        "rule_count": len(enabled_rules),
+        "cos_url": cos_url,
+        "update_interval": update_interval
+    }
+
+
 import httpx
 
 class CheckAvailabilityRequest(BaseModel):
