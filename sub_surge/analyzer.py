@@ -388,10 +388,14 @@ async def inspect_subscription_node_health(
     max_nodes: int = DEFAULT_NODE_HEALTH_LIMIT,
     timeout: float = DEFAULT_NODE_HEALTH_TIMEOUT,
 ) -> Dict[str, Any]:
-    """检测订阅内节点的 TCP 连通性"""
+    """检测订阅内节点入口的连通性，不等同于真实代理可用性验证"""
     report = {
-        "probe_type": "tcp",
-        "note": "仅测试 TCP 建连成功，不代表代理认证或实际可用性完全正常。",
+        "probe_type": "tcp-connect",
+        "verification_level": "entry",
+        "verification_label": "入口连通性",
+        "proxy_capable": False,
+        "note": "当前结果仅表示节点入口是否接受 TCP 连接，不能证明认证、转发链路或出口可用性。",
+        "recommendation": "如果要判断节点是否真的可代理出站，需要借助 Clash.Meta、sing-box、Xray 等代理内核加载节点后，再通过实际请求验证。",
         "checked_at": datetime.utcnow().replace(microsecond=0).isoformat() + 'Z',
         "total_nodes": 0,
         "tested_nodes": 0,

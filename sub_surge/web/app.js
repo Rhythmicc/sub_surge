@@ -51,12 +51,45 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
-function renderNodeHealthReport(report, title = '节点 TCP 连通性') {
+function openNodeHealthPanel(title, subtitle, contentHtml) {
+    const overlay = document.getElementById('node-health-panel');
+    const titleElement = document.getElementById('node-health-panel-title');
+    const subtitleElement = document.getElementById('node-health-panel-subtitle');
+    const contentElement = document.getElementById('node-health-panel-content');
+
+    if (!overlay || !titleElement || !subtitleElement || !contentElement) {
+        return;
+    }
+
+    titleElement.textContent = title;
+    subtitleElement.textContent = subtitle;
+    contentElement.innerHTML = contentHtml;
+    overlay.style.display = 'flex';
+    overlay.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeNodeHealthPanel() {
+    const overlay = document.getElementById('node-health-panel');
+    const contentElement = document.getElementById('node-health-panel-content');
+    if (!overlay || !contentElement) {
+        return;
+    }
+
+    overlay.style.display = 'none';
+    overlay.setAttribute('aria-hidden', 'true');
+    contentElement.innerHTML = '';
+    document.body.style.overflow = '';
+}
+
+function renderNodeHealthReport(report, title = '节点入口检查') {
     if (!report) {
         return '';
     }
 
     const results = Array.isArray(report.results) ? report.results : [];
+    const verificationLabel = report.verification_label || '入口连通性';
+    const recommendation = report.recommendation || '如需确认节点是否真的可代理出站，请接入 Clash.Meta、sing-box 或 Xray 这类代理内核发起真实请求。';
     const averageLatency = report.average_latency_ms === null || report.average_latency_ms === undefined
         ? '-'
         : `${report.average_latency_ms} ms`;
@@ -80,7 +113,7 @@ function renderNodeHealthReport(report, title = '节点 TCP 连通性') {
                         ${!isHealthy && item.error ? `<div style="font-size: 12px; color: #c62828; margin-top: 4px; word-break: break-all;">${escapeHtml(item.error)}</div>` : ''}
                     </div>
                     <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px; white-space: nowrap;">
-                        <span style="padding: 2px 8px; border-radius: 999px; font-size: 12px; color: ${statusColor}; background: #fff; border: 1px solid ${borderColor};">${isHealthy ? '可达' : '失败'}</span>
+                        <span style="padding: 2px 8px; border-radius: 999px; font-size: 12px; color: ${statusColor}; background: #fff; border: 1px solid ${borderColor};">${isHealthy ? '入口可达' : '失败'}</span>
                         <span style="font-size: 12px; color: #555;">${latencyText}</span>
                     </div>
                 </div>
@@ -89,24 +122,27 @@ function renderNodeHealthReport(report, title = '节点 TCP 连通性') {
         : '<div style="padding: 12px; background: #fff; border: 1px dashed #cfd8dc; border-radius: 8px; color: #607d8b; font-size: 13px;">当前没有可展示的节点检测结果。</div>';
 
     return `
-        <div style="margin-top: 14px; padding: 12px; background: #f8fbff; border: 1px solid #d6e9ff; border-radius: 10px;">
+        <div style="padding: 16px; background: rgba(255, 255, 255, 0.92); border: 1px solid #d8e7f4; border-radius: 18px; box-shadow: 0 14px 28px rgba(15, 23, 42, 0.06);">
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
                 <strong style="color: #1565c0;">🩺 ${escapeHtml(title)}</strong>
-                <span style="font-size: 12px; color: #607d8b;">检测方式: TCP 建连</span>
+                <span style="font-size: 12px; color: #607d8b;">检查级别: ${escapeHtml(verificationLabel)}</span>
             </div>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 10px; font-size: 13px;">
                 <div><strong>节点总数:</strong> ${report.total_nodes || 0}</div>
                 <div><strong>已检测:</strong> ${report.tested_nodes || 0}</div>
-                <div><strong>可达:</strong> ${report.healthy_count || 0}</div>
+                <div><strong>入口可达:</strong> ${report.healthy_count || 0}</div>
                 <div><strong>失败:</strong> ${report.unhealthy_count || 0}</div>
                 <div><strong>平均耗时:</strong> ${averageLatency}</div>
+            </div>
+            <div style="margin-bottom: 12px; padding: 10px 12px; background: #fff7e8; border: 1px solid #ffe1ad; border-radius: 12px; color: #8a5a00; font-size: 12px; line-height: 1.7;">
+                <strong>说明:</strong> ${escapeHtml(report.note || '当前结果仅表示服务端入口是否接受连接。')}
             </div>
             ${report.limited ? `<div style="margin-bottom: 10px; padding: 8px 10px; background: #fff8e1; border-radius: 8px; color: #8d6e63; font-size: 12px;">节点较多，当前仅检测前 ${report.tested_nodes || 0} 个节点。</div>` : ''}
             ${report.error ? `<div style="margin-bottom: 10px; padding: 8px 10px; background: #fff3e0; border-radius: 8px; color: #e65100; font-size: 12px; word-break: break-all;">${escapeHtml(report.error)}</div>` : ''}
             <div style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto;">
                 ${resultItems}
             </div>
-            ${report.note ? `<div style="margin-top: 10px; font-size: 12px; color: #607d8b;">${escapeHtml(report.note)}</div>` : ''}
+            <div style="margin-top: 12px; font-size: 12px; color: #607d8b; line-height: 1.7;">${escapeHtml(recommendation)}</div>
         </div>
     `;
 }
@@ -555,7 +591,7 @@ function createAirportCard(airport) {
                 更新
             </button>
             <button class="btn btn-secondary btn-sm" onclick='checkAirportNodeHealth(${airportNameArg}, this)'>
-                节点健康
+                检查
             </button>
             <button class="btn btn-secondary btn-sm" onclick='editAirport(${airportNameArg})'>
                 编辑
@@ -564,7 +600,6 @@ function createAirportCard(airport) {
                 删除
             </button>
         </div>
-        <div class="node-health-panel" style="display: none;"></div>
     `;
     
     return card;
@@ -702,17 +737,14 @@ async function checkAirportsHealth(names) {
 }
 
 async function checkAirportNodeHealth(name, button) {
-    const card = button?.closest('.airport-card');
-    const panel = card?.querySelector('.node-health-panel');
-    if (!panel) {
-        return;
-    }
-
     const originalText = button.textContent;
     button.disabled = true;
-    button.textContent = '检测中...';
-    panel.style.display = 'block';
-    panel.innerHTML = '<div style="margin-top: 12px; padding: 10px; background: #f5f7fa; border-radius: 8px; color: #607d8b; font-size: 13px;">正在检测订阅中各节点的 TCP 连通性...</div>';
+    button.textContent = '检查中...';
+    openNodeHealthPanel(
+        `${name} 节点检查`,
+        '当前展示的是入口连通性检查，不直接等同于节点可否稳定代理出站。',
+        '<div style="padding: 18px; background: rgba(255,255,255,0.92); border-radius: 18px; border: 1px solid #d8e7f4; color: #607d8b; font-size: 14px; line-height: 1.8;">正在检查订阅中的节点入口连通性，请稍候...</div>'
+    );
 
     try {
         const response = await fetch(`${API_BASE}/api/airports/${encodeURIComponent(name)}/node-health`, {
@@ -721,14 +753,26 @@ async function checkAirportNodeHealth(name, button) {
         const result = await response.json();
 
         if (!response.ok) {
-            panel.innerHTML = `<div style="margin-top: 12px; padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828; font-size: 13px;">节点检测失败: ${escapeHtml(result.detail || '未知错误')}</div>`;
+            openNodeHealthPanel(
+                `${name} 节点检查`,
+                '当前展示的是入口连通性检查，不直接等同于节点可否稳定代理出站。',
+                `<div style="padding: 18px; background: #ffebee; border-radius: 18px; color: #c62828; font-size: 14px; line-height: 1.8;">节点检查失败: ${escapeHtml(result.detail || '未知错误')}</div>`
+            );
             showAlert(`节点检测失败: ${result.detail || '未知错误'}`, 'error');
             return;
         }
 
-        panel.innerHTML = renderNodeHealthReport(result, `${name} 节点健康`);
+        openNodeHealthPanel(
+            `${name} 节点检查`,
+            '当前展示的是入口连通性检查，不直接等同于节点可否稳定代理出站。',
+            renderNodeHealthReport(result, `${name} 节点检查`)
+        );
     } catch (error) {
-        panel.innerHTML = `<div style="margin-top: 12px; padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828; font-size: 13px;">节点检测失败: ${escapeHtml(error.message)}</div>`;
+        openNodeHealthPanel(
+            `${name} 节点检查`,
+            '当前展示的是入口连通性检查，不直接等同于节点可否稳定代理出站。',
+            `<div style="padding: 18px; background: #ffebee; border-radius: 18px; color: #c62828; font-size: 14px; line-height: 1.8;">节点检查失败: ${escapeHtml(error.message)}</div>`
+        );
         showAlert(`节点检测失败: ${error.message}`, 'error');
     } finally {
         button.disabled = false;
@@ -1614,6 +1658,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', () => {
+    const nodeHealthPanel = document.getElementById('node-health-panel');
+    const nodeHealthPanelClose = document.getElementById('node-health-panel-close');
+    if (nodeHealthPanel && nodeHealthPanelClose) {
+        nodeHealthPanelClose.addEventListener('click', closeNodeHealthPanel);
+        nodeHealthPanel.addEventListener('click', (event) => {
+            if (event.target === nodeHealthPanel) {
+                closeNodeHealthPanel();
+            }
+        });
+    }
+
     // 为 2FA 验证码输入框添加 Enter 键监听
     const codeInput = document.getElementById('2fa-code-input');
     if (codeInput) {
@@ -1628,6 +1683,12 @@ document.addEventListener('DOMContentLoaded', () => {
             e.target.value = e.target.value.replace(/[^0-9]/g, '');
         });
     }
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closeNodeHealthPanel();
+        }
+    });
     
     // 首先检查 2FA 绑定状态
     checkAndShow2FAModal().then(() => {
