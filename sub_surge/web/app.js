@@ -38,6 +38,79 @@ function getAuthHeaders() {
     return headers;
 }
 
+function getAirportElementId(prefix, airportName) {
+    return `${prefix}-${encodeURIComponent(airportName).replace(/%/g, '_')}`;
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderNodeHealthReport(report, title = '节点 TCP 连通性') {
+    if (!report) {
+        return '';
+    }
+
+    const results = Array.isArray(report.results) ? report.results : [];
+    const averageLatency = report.average_latency_ms === null || report.average_latency_ms === undefined
+        ? '-'
+        : `${report.average_latency_ms} ms`;
+
+    const resultItems = results.length > 0
+        ? results.map(item => {
+            const isHealthy = item.status === 'ok';
+            const statusColor = isHealthy ? '#2e7d32' : '#c62828';
+            const statusBackground = isHealthy ? '#e8f5e9' : '#ffebee';
+            const borderColor = isHealthy ? '#c8e6c9' : '#ffcdd2';
+            const latencyText = item.latency_ms === null || item.latency_ms === undefined
+                ? '不可达'
+                : `${item.latency_ms} ms`;
+            const endpoint = `${escapeHtml(item.server || '')}:${escapeHtml(item.port || '')}`;
+
+            return `
+                <div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px; border: 1px solid ${borderColor}; border-radius: 8px; background: ${statusBackground};">
+                    <div style="min-width: 0;">
+                        <div style="font-weight: 600; color: #333; word-break: break-all;">${escapeHtml(item.name || endpoint)}</div>
+                        <div style="font-size: 12px; color: #666; margin-top: 4px; word-break: break-all;">${endpoint} · ${escapeHtml(item.protocol || 'unknown')}</div>
+                        ${!isHealthy && item.error ? `<div style="font-size: 12px; color: #c62828; margin-top: 4px; word-break: break-all;">${escapeHtml(item.error)}</div>` : ''}
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px; white-space: nowrap;">
+                        <span style="padding: 2px 8px; border-radius: 999px; font-size: 12px; color: ${statusColor}; background: #fff; border: 1px solid ${borderColor};">${isHealthy ? '可达' : '失败'}</span>
+                        <span style="font-size: 12px; color: #555;">${latencyText}</span>
+                    </div>
+                </div>
+            `;
+        }).join('')
+        : '<div style="padding: 12px; background: #fff; border: 1px dashed #cfd8dc; border-radius: 8px; color: #607d8b; font-size: 13px;">当前没有可展示的节点检测结果。</div>';
+
+    return `
+        <div style="margin-top: 14px; padding: 12px; background: #f8fbff; border: 1px solid #d6e9ff; border-radius: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
+                <strong style="color: #1565c0;">🩺 ${escapeHtml(title)}</strong>
+                <span style="font-size: 12px; color: #607d8b;">检测方式: TCP 建连</span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 10px; font-size: 13px;">
+                <div><strong>节点总数:</strong> ${report.total_nodes || 0}</div>
+                <div><strong>已检测:</strong> ${report.tested_nodes || 0}</div>
+                <div><strong>可达:</strong> ${report.healthy_count || 0}</div>
+                <div><strong>失败:</strong> ${report.unhealthy_count || 0}</div>
+                <div><strong>平均耗时:</strong> ${averageLatency}</div>
+            </div>
+            ${report.limited ? `<div style="margin-bottom: 10px; padding: 8px 10px; background: #fff8e1; border-radius: 8px; color: #8d6e63; font-size: 12px;">节点较多，当前仅检测前 ${report.tested_nodes || 0} 个节点。</div>` : ''}
+            ${report.error ? `<div style="margin-bottom: 10px; padding: 8px 10px; background: #fff3e0; border-radius: 8px; color: #e65100; font-size: 12px; word-break: break-all;">${escapeHtml(report.error)}</div>` : ''}
+            <div style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto;">
+                ${resultItems}
+            </div>
+            ${report.note ? `<div style="margin-top: 10px; font-size: 12px; color: #607d8b;">${escapeHtml(report.note)}</div>` : ''}
+        </div>
+    `;
+}
+
 // 工具函数
 function showAlert(message, type = 'success') {
     const container = document.getElementById('alert-container');
@@ -446,6 +519,8 @@ async function loadAirports() {
 function createAirportCard(airport) {
     const card = document.createElement('div');
     card.className = 'airport-card';
+    const airportNameArg = JSON.stringify(airport.name);
+    const statusId = getAirportElementId('status', airport.name);
     
     // 构造腾讯云链接
     const txcosUrl = globalConfig.txcos_domain 
@@ -461,13 +536,13 @@ function createAirportCard(airport) {
         <input type="checkbox" class="airport-select" value="${airport.name}" onchange="updateBatchActionState()">
         <h3 style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
             <span style="display: flex; align-items: center; gap: 8px;">
-                <span class="status-dot" id="status-${airport.name}" title="未检测"></span>
+                <span class="status-dot" id="${statusId}" title="未检测"></span>
                 ${airport.name}
             </span>
             <div style="display: flex; gap: 6px;">
                 ${txcosUrl ? `<button class="btn btn-sm" onclick="copyToClipboard('${txcosUrl}')" style="padding: 4px 8px; font-size: 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;" title="复制 Surge 链接">📋 Surge</button>` : ''}
                 ${clashUrl ? `<button class="btn btn-sm" onclick="copyToClipboard('${clashUrl}')" style="padding: 4px 8px; font-size: 12px; background: #f093fb; color: white; border: none; border-radius: 4px; cursor: pointer;" title="复制 Clash 链接">📋 Clash</button>` : ''}
-                ${txcosUrl && !clashUrl ? `<button class="btn btn-sm" onclick="convertToClash('${airport.name}')" style="padding: 4px 8px; font-size: 12px; background: #48c774; color: white; border: none; border-radius: 4px; cursor: pointer;" title="生成 Clash 订阅">🔄 转Clash</button>` : ''}
+                ${txcosUrl && !clashUrl ? `<button class="btn btn-sm" onclick='convertToClash(${airportNameArg})' style="padding: 4px 8px; font-size: 12px; background: #48c774; color: white; border: none; border-radius: 4px; cursor: pointer;" title="生成 Clash 订阅">🔄 转Clash</button>` : ''}
             </div>
         </h3>
         <p style="font-size: 12px; color: #888;"><strong>订阅链接:</strong> <span style="display: inline-block; max-width: 75%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;" title="${airport.url}">${airport.url}</span></p>
@@ -476,16 +551,20 @@ function createAirportCard(airport) {
         <p><strong>存储路径:</strong> ${airport.key}</p>
         <p><strong>重置周期:</strong> ${airport.reset_day}天</p>
         <div class="actions">
-            <button class="btn btn-primary btn-sm" onclick="updateAirport('${airport.name}')">
+            <button class="btn btn-primary btn-sm" onclick='updateAirport(${airportNameArg})'>
                 更新
             </button>
-            <button class="btn btn-secondary btn-sm" onclick="editAirport('${airport.name}')">
+            <button class="btn btn-secondary btn-sm" onclick='checkAirportNodeHealth(${airportNameArg}, this)'>
+                节点健康
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick='editAirport(${airportNameArg})'>
                 编辑
             </button>
-            <button class="btn btn-danger btn-sm" onclick="deleteAirport('${airport.name}')">
+            <button class="btn btn-danger btn-sm" onclick='deleteAirport(${airportNameArg})'>
                 删除
             </button>
         </div>
+        <div class="node-health-panel" style="display: none;"></div>
     `;
     
     return card;
@@ -577,7 +656,7 @@ async function checkAirportsHealth(names) {
     
     // 设置为检测中状态
     names.forEach(name => {
-        const dot = document.getElementById(`status-${name}`);
+        const dot = document.getElementById(getAirportElementId('status', name));
         if(dot) {
             dot.title = "检测中...";
             dot.className = "status-dot status-yellow";
@@ -597,7 +676,7 @@ async function checkAirportsHealth(names) {
         const results = await response.json();
         
         Object.entries(results).forEach(([name, statusData]) => {
-             const dot = document.getElementById(`status-${name}`);
+             const dot = document.getElementById(getAirportElementId('status', name));
              if (dot) {
                  if (statusData.status === 'ok') {
                      dot.className = "status-dot status-green";
@@ -613,12 +692,47 @@ async function checkAirportsHealth(names) {
         console.error('检测请求失败', e);
         // 如果失败，将状态标记为红色或重置
         names.forEach(name => {
-            const dot = document.getElementById(`status-${name}`);
+            const dot = document.getElementById(getAirportElementId('status', name));
             if(dot && dot.className.includes("status-yellow")) {
                 dot.className = "status-dot status-red";
                 dot.title = "检测失败";
             }
         });
+    }
+}
+
+async function checkAirportNodeHealth(name, button) {
+    const card = button?.closest('.airport-card');
+    const panel = card?.querySelector('.node-health-panel');
+    if (!panel) {
+        return;
+    }
+
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = '检测中...';
+    panel.style.display = 'block';
+    panel.innerHTML = '<div style="margin-top: 12px; padding: 10px; background: #f5f7fa; border-radius: 8px; color: #607d8b; font-size: 13px;">正在检测订阅中各节点的 TCP 连通性...</div>';
+
+    try {
+        const response = await fetch(`${API_BASE}/api/airports/${encodeURIComponent(name)}/node-health`, {
+            headers: getAuthHeaders()
+        });
+        const result = await response.json();
+
+        if (!response.ok) {
+            panel.innerHTML = `<div style="margin-top: 12px; padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828; font-size: 13px;">节点检测失败: ${escapeHtml(result.detail || '未知错误')}</div>`;
+            showAlert(`节点检测失败: ${result.detail || '未知错误'}`, 'error');
+            return;
+        }
+
+        panel.innerHTML = renderNodeHealthReport(result, `${name} 节点健康`);
+    } catch (error) {
+        panel.innerHTML = `<div style="margin-top: 12px; padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828; font-size: 13px;">节点检测失败: ${escapeHtml(error.message)}</div>`;
+        showAlert(`节点检测失败: ${error.message}`, 'error');
+    } finally {
+        button.disabled = false;
+        button.textContent = originalText;
     }
 }
 
@@ -805,7 +919,7 @@ function displayAnalysisResult(result) {
     
     if (result.error) {
         contentDiv.innerHTML = `
-            <p style="color: #d32f2f;">❌ ${result.error}</p>
+            <p style="color: #d32f2f;">❌ ${escapeHtml(result.error)}</p>
         `;
         resultDiv.style.display = 'block';
         return;
@@ -841,16 +955,20 @@ function displayAnalysisResult(result) {
             <div style="margin-bottom: 10px;">
                 <strong>检测到的国家/地区:</strong><br>
                 <div style="margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px;">
-                    ${analysis.countries.map(c => `<span style="background: #fff; padding: 3px 8px; border-radius: 4px; font-size: 12px;">${c}</span>`).join('')}
+                    ${analysis.countries.map(c => `<span style="background: #fff; padding: 3px 8px; border-radius: 4px; font-size: 12px;">${escapeHtml(c)}</span>`).join('')}
                 </div>
             </div>
         `;
+    }
+
+    if (analysis.node_health) {
+        html += renderNodeHealthReport(analysis.node_health);
     }
     
     if (suggestions.name) {
         html += `
             <div style="margin-top: 10px;">
-                <strong>建议机场名称:</strong> ${suggestions.name}
+                <strong>建议机场名称:</strong> ${escapeHtml(suggestions.name)}
             </div>
         `;
     }
@@ -859,7 +977,7 @@ function displayAnalysisResult(result) {
     if (suggestions.special_notes) {
         html += `
             <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 4px;">
-                <strong>💡 AI建议:</strong> ${suggestions.special_notes}
+                <strong>💡 AI建议:</strong> ${escapeHtml(suggestions.special_notes)}
             </div>
         `;
     }
@@ -868,7 +986,7 @@ function displayAnalysisResult(result) {
     if (result.ai_error) {
         html += `
             <div style="margin-top: 10px; padding: 8px; background: #fff; border-radius: 4px; font-size: 12px; color: #666;">
-                ⚠️ AI分析不可用（已使用规则分析）: ${result.ai_error}
+                ⚠️ AI分析不可用（已使用规则分析）: ${escapeHtml(result.ai_error)}
             </div>
         `;
     }

@@ -3,96 +3,226 @@
 自动分析订阅内容，推荐配置参数
 支持OpenRouter AI增强分析（通过Web界面配置）
 """
+import asyncio
+import binascii
+from datetime import datetime
 import re
 import json
-from typing import Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import unquote, urlsplit
 import base64
 import httpx
 
 
-def analyze_subscription(url: str = None, use_ai: bool = True, content: str = None) -> Dict:
-    """
-    分析订阅链接或订阅内容，自动推荐配置
-    
-    Args:
-        url: 订阅链接（与content二选一）
-        use_ai: 是否使用AI分析
-        content: 直接提供的订阅内容（与url二选一）
-    
-    Returns:
-        {
-            "is_node_list": bool,
-            "country_mapping": dict,
-            "exclude_keywords": list,
-            "confidence": float,  # 置信度 0-1
-            "suggestions": {
-                "name": str,
-                "info_keywords": dict
-            }
-        }
-    """
-    try:
-        # 获取订阅内容
-        if content:
-            # 使用直接提供的内容
-            raw_content = content.encode('utf-8') if isinstance(content, str) else content
-        elif url:
-            # 下载订阅内容
-            import httpx
-            with httpx.Client(timeout=30.0, follow_redirects=True) as client:
-                response = client.get(url)
-                response.raise_for_status()
-                raw_content = response.content
-        else:
-            return {
-                "error": "必须提供url或content参数",
-                "confidence": 0
-            }
-        
-        if not raw_content:
-            return {
-                "error": "无法获取订阅内容",
-                "confidence": 0
-            }
-        
-        # 智能判断是否需要Base64解码
-        # 优先尝试直接解析为UTF-8（大多数订阅是明文）
-        if isinstance(raw_content, bytes):
+DEFAULT_NODE_HEALTH_TIMEOUT = 3.0
+DEFAULT_NODE_HEALTH_LIMIT = 50
+DEFAULT_NODE_HEALTH_CONCURRENCY = 20
+
+
+async def fetch_subscription_content(url: str) -> bytes:
+    """异步下载订阅内容"""
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        return response.content
+
+
+def decode_subscription_content(raw_content: Any) -> Tuple[str, bool]:
+    """智能解码订阅内容，并标记原始内容是否为 Base64 订阅"""
+    if raw_content is None:
+        return "", False
+
+    normalized_content = raw_content.encode('utf-8') if isinstance(raw_content, str) else raw_content
+    decoded = ""
+    is_base64 = False
+
+    if isinstance(normalized_content, bytes):
+        try:
+            decoded = normalized_content.decode('utf-8', errors='strict')
+
+            has_config_markers = any(
+                marker in decoded
+                for marker in ['[Proxy]', '[Proxy Group]', 'proxies:', '= ss,', '= vmess,', '= trojan,']
+            )
+
+            if not has_config_markers and len(decoded) > 100:
+                content_clean = decoded.replace('\n', '').replace('\r', '').replace(' ', '')
+                base64_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=')
+                if content_clean and all(char in base64_chars for char in content_clean):
+                    try:
+                        decoded_b64 = base64.b64decode(content_clean).decode('utf-8', errors='ignore')
+                        if any(marker in decoded_b64 for marker in ['[Proxy]', 'proxies:', 'ss://', 'vmess://', 'trojan://']):
+                            decoded = decoded_b64
+                            is_base64 = True
+                    except (binascii.Error, ValueError):
+                        pass
+        except UnicodeDecodeError:
             try:
-                decoded = raw_content.decode('utf-8', errors='strict')
+                decoded = base64.b64decode(normalized_content).decode('utf-8', errors='ignore')
+                is_base64 = True
+            except (binascii.Error, ValueError):
+                decoded = normalized_content.decode('utf-8', errors='ignore')
                 is_base64 = False
-                
-                # 检查是否是明文格式（包含Surge/Clash特征）
-                has_config_markers = any(marker in decoded for marker in ['[Proxy]', '[Proxy Group]', 'proxies:', '= ss,', '= vmess,', '= trojan,'])
-                
-                # 如果没有明显的配置标记，且内容看起来像base64编码，尝试解码
-                if not has_config_markers and len(decoded) > 100:
-                    content_clean = decoded.replace('\n', '').replace('\r', '').replace(' ', '')
-                    base64_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=')
-                    if len(content_clean) > 0 and all(c in base64_chars for c in content_clean):
-                        try:
-                            decoded_b64 = base64.b64decode(content_clean).decode('utf-8', errors='ignore')
-                            # 验证解码后的内容是否更像配置文件
-                            if any(marker in decoded_b64 for marker in ['[Proxy]', 'proxies:', 'ss://', 'vmess://', 'trojan://']):
-                                decoded = decoded_b64
-                                is_base64 = True
-                        except:
-                            pass  # 解码失败，保持原内容
-            except UnicodeDecodeError:
-                # UTF-8解码失败，尝试Base64解码
-                try:
-                    decoded = base64.b64decode(raw_content).decode('utf-8', errors='ignore')
-                    is_base64 = True
-                except:
-                    decoded = raw_content.decode('utf-8', errors='ignore')
-                    is_base64 = False
-        else:
-            # 已经是字符串
-            decoded = raw_content
-            is_base64 = False
-        
+    else:
+        decoded = str(normalized_content)
+
+    return decoded, is_base64
+
+
+def _decode_base64_text(payload: str) -> Optional[str]:
+    """兼容标准和 URL-safe 的 Base64 解码"""
+    normalized = payload.strip()
+    if not normalized:
+        return None
+
+    padding = (-len(normalized)) % 4
+    if padding:
+        normalized += '=' * padding
+
+    for decoder in (base64.urlsafe_b64decode, base64.b64decode):
+        try:
+            return decoder(normalized).decode('utf-8', errors='ignore')
+        except (binascii.Error, ValueError):
+            continue
+
+    return None
+
+
+def _extract_endpoint_from_surge_line(line: str) -> Optional[Dict[str, Any]]:
+    """从 Surge [Proxy] 行中提取节点地址"""
+    if '=' not in line:
+        return None
+
+    name_part, config_part = line.split('=', 1)
+    params = [item.strip() for item in config_part.split(',')]
+    if len(params) < 3:
+        return None
+
+    try:
+        port = int(params[2])
+    except ValueError:
+        return None
+
+    return {
+        "name": name_part.strip() or f"{params[1]}:{params[2]}",
+        "protocol": params[0].lower(),
+        "server": params[1].strip().strip('[]'),
+        "port": port,
+    }
+
+
+def _extract_endpoint_from_uri(line: str) -> Optional[Dict[str, Any]]:
+    """从 ss/vmess/trojan 等 URI 中提取节点地址"""
+    line = line.strip()
+    if '://' not in line:
+        return None
+
+    protocol = line.split('://', 1)[0].lower()
+    name = unquote(line.split('#', 1)[1]) if '#' in line else ""
+
+    if protocol == 'vmess':
+        encoded = line.split('://', 1)[1].split('#', 1)[0]
+        decoded = _decode_base64_text(encoded)
+        if not decoded:
+            return None
+
+        try:
+            payload = json.loads(decoded)
+            server = (payload.get('add') or payload.get('server') or '').strip().strip('[]')
+            port = int(payload.get('port'))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+
+        return {
+            "name": name or payload.get('ps') or f"{server}:{port}",
+            "protocol": protocol,
+            "server": server,
+            "port": port,
+        }
+
+    if protocol == 'ss':
+        fragment_free = line.split('#', 1)[0]
+        parsed = urlsplit(fragment_free)
+
+        if parsed.hostname and parsed.port:
+            return {
+                "name": name or f"{parsed.hostname}:{parsed.port}",
+                "protocol": protocol,
+                "server": parsed.hostname.strip('[]'),
+                "port": parsed.port,
+            }
+
+        encoded = fragment_free.split('://', 1)[1].split('?', 1)[0]
+        decoded = _decode_base64_text(encoded)
+        if not decoded:
+            return None
+
+        parsed_decoded = urlsplit(f"//{decoded}")
+        if not parsed_decoded.hostname or not parsed_decoded.port:
+            return None
+
+        return {
+            "name": name or f"{parsed_decoded.hostname}:{parsed_decoded.port}",
+            "protocol": protocol,
+            "server": parsed_decoded.hostname.strip('[]'),
+            "port": parsed_decoded.port,
+        }
+
+    parsed = urlsplit(line)
+    if not parsed.hostname or not parsed.port:
+        return None
+
+    return {
+        "name": name or f"{parsed.hostname}:{parsed.port}",
+        "protocol": protocol,
+        "server": parsed.hostname.strip('[]'),
+        "port": parsed.port,
+    }
+
+
+def extract_node_candidates(decoded_content: str) -> List[Dict[str, Any]]:
+    """从订阅文本中提取可探测的节点列表"""
+    nodes: List[Dict[str, Any]] = []
+    in_proxy_section = False
+
+    for raw_line in decoded_content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(('#', ';', '//')):
+            continue
+
+        if line == '[Proxy]':
+            in_proxy_section = True
+            continue
+
+        if line.startswith('[') and line != '[Proxy]':
+            in_proxy_section = False
+            continue
+
+        endpoint = None
+        if in_proxy_section:
+            endpoint = _extract_endpoint_from_surge_line(line)
+        elif line.startswith(('ss://', 'vmess://', 'trojan://', 'vless://', 'hysteria://', 'hysteria2://', 'tuic://')):
+            endpoint = _extract_endpoint_from_uri(line)
+
+        if endpoint:
+            nodes.append(endpoint)
+
+    return nodes
+
+
+def analyze_subscription_raw(raw_content: Any, url: str = None, use_ai: bool = True) -> Dict:
+    """基于原始订阅内容进行分析"""
+    if not raw_content:
+        return {
+            "error": "无法获取订阅内容",
+            "confidence": 0
+        }
+
+    try:
+        decoded, is_base64 = decode_subscription_content(raw_content)
         lines = decoded.split('\n')
-        
+
         # 分析结果
         result = {
             "template": "generic",
@@ -111,7 +241,7 @@ def analyze_subscription(url: str = None, use_ai: bool = True, content: str = No
                 "format_type": "unknown"
             }
         }
-        
+
         # 检测格式
         if '[Proxy]' in decoded:
             result["analysis"]["format_type"] = "surge"
@@ -119,16 +249,16 @@ def analyze_subscription(url: str = None, use_ai: bool = True, content: str = No
         elif is_base64 and any(line.startswith(('ss://', 'vmess://', 'trojan://')) for line in lines):
             result["analysis"]["format_type"] = "node_list"
             result["is_node_list"] = True
-        
+
         # 分析节点
         countries_found = set()
         node_count = 0
-        
+
         # 检测国家名称
         country_patterns = {
             # 英文
             "Hong Kong": "香港",
-            "USA": "美国", 
+            "USA": "美国",
             "United States": "美国",
             "Japan": "日本",
             "Singapore": "新加坡",
@@ -156,27 +286,27 @@ def analyze_subscription(url: str = None, use_ai: bool = True, content: str = No
             "Chile": "智利",
             "Sweden": "瑞典"
         }
-        
+
         for line in lines:
             # 检测节点
             if '=' in line or line.startswith(('ss://', 'vmess://', 'trojan://')):
                 node_count += 1
-                
+
                 # 检测国家
                 for en_name, zh_name in country_patterns.items():
                     if en_name.lower() in line.lower():
                         countries_found.add(en_name)
-        
+
         result["analysis"]["node_count"] = node_count
         result["analysis"]["countries"] = sorted(list(countries_found))
-        
+
         # 检测信息关键词
         info_keywords = {
             "traffic": [],
             "reset": [],
             "expire": []
         }
-        
+
         for line in lines:
             line_lower = line.lower()
             if 'bandwidth' in line_lower or 'traffic' in line_lower:
@@ -191,26 +321,26 @@ def analyze_subscription(url: str = None, use_ai: bool = True, content: str = No
             if 'date' in line_lower or 'expire' in line_lower or '到期' in line:
                 info_keywords["expire"].append("Date")
                 result["analysis"]["has_info_section"] = True
-        
+
         # 去重
         for key in info_keywords:
             info_keywords[key] = list(set(info_keywords[key]))
-        
+
         result["suggestions"]["info_keywords"] = info_keywords
-        
+
         # 生成国家映射（只包含检测到的国家）
         result["country_mapping"] = {
             en: zh for en, zh in country_patterns.items()
             if en in countries_found
         }
-        
+
         # 静态分析的置信度
         result["confidence"] = 0.7 if len(countries_found) > 10 else 0.6
-        
+
         # 推荐排除关键词
         common_exclude = ["direct", "premium", "expired", "traffic-exceed"]
         result["exclude_keywords"] = common_exclude
-        
+
         # 推荐机场名称（从URL中提取）
         try:
             from urllib.parse import urlparse
@@ -220,9 +350,9 @@ def analyze_subscription(url: str = None, use_ai: bool = True, content: str = No
             domain_parts = domain.split('.')
             if len(domain_parts) > 1:
                 result["suggestions"]["name"] = domain_parts[-2].capitalize()
-        except:
+        except Exception:
             pass
-        
+
         # 如果启用AI增强分析，则调用OpenRouter
         if use_ai:
             try:
@@ -238,9 +368,153 @@ def analyze_subscription(url: str = None, use_ai: bool = True, content: str = No
                 result["analysis_method"] = "static"
         else:
             result["analysis_method"] = "static"
-        
+
         return result
-        
+
+    except Exception as e:
+        return {
+            "error": str(e),
+            "template": "generic",
+            "confidence": 0,
+            "suggestions": {},
+            "analysis_method": "error"
+        }
+
+
+async def inspect_subscription_node_health(
+    url: str = None,
+    content: Any = None,
+    raw_content: Any = None,
+    max_nodes: int = DEFAULT_NODE_HEALTH_LIMIT,
+    timeout: float = DEFAULT_NODE_HEALTH_TIMEOUT,
+) -> Dict[str, Any]:
+    """检测订阅内节点的 TCP 连通性"""
+    report = {
+        "probe_type": "tcp",
+        "note": "仅测试 TCP 建连成功，不代表代理认证或实际可用性完全正常。",
+        "checked_at": datetime.utcnow().replace(microsecond=0).isoformat() + 'Z',
+        "total_nodes": 0,
+        "tested_nodes": 0,
+        "healthy_count": 0,
+        "unhealthy_count": 0,
+        "average_latency_ms": None,
+        "limited": False,
+        "results": [],
+    }
+
+    try:
+        if raw_content is None:
+            if content is not None:
+                raw_content = content
+            elif url:
+                raw_content = await fetch_subscription_content(url)
+            else:
+                report["error"] = "必须提供 url、content 或 raw_content"
+                return report
+
+        decoded_content, _ = decode_subscription_content(raw_content)
+        nodes = extract_node_candidates(decoded_content)
+        report["total_nodes"] = len(nodes)
+
+        if not nodes:
+            report["error"] = "未检测到可探测的节点地址"
+            return report
+
+        selected_nodes = nodes[:max_nodes]
+        report["limited"] = len(nodes) > max_nodes
+
+        semaphore = asyncio.Semaphore(DEFAULT_NODE_HEALTH_CONCURRENCY)
+
+        async def probe(node: Dict[str, Any]) -> Dict[str, Any]:
+            async with semaphore:
+                started_at = time.perf_counter()
+                try:
+                    reader, writer = await asyncio.wait_for(
+                        asyncio.open_connection(node["server"], node["port"]),
+                        timeout=timeout,
+                    )
+                    latency_ms = max(int((time.perf_counter() - started_at) * 1000), 1)
+                    writer.close()
+                    try:
+                        await writer.wait_closed()
+                    except Exception:
+                        pass
+
+                    return {
+                        **node,
+                        "status": "ok",
+                        "latency_ms": latency_ms,
+                        "error": None,
+                    }
+                except asyncio.TimeoutError:
+                    return {
+                        **node,
+                        "status": "fail",
+                        "latency_ms": None,
+                        "error": "timeout",
+                    }
+                except OSError as exc:
+                    return {
+                        **node,
+                        "status": "fail",
+                        "latency_ms": None,
+                        "error": str(exc),
+                    }
+
+        results = await asyncio.gather(*(probe(node) for node in selected_nodes))
+        healthy = [item for item in results if item["status"] == "ok"]
+
+        report["results"] = results
+        report["tested_nodes"] = len(results)
+        report["healthy_count"] = len(healthy)
+        report["unhealthy_count"] = len(results) - len(healthy)
+        if healthy:
+            report["average_latency_ms"] = round(
+                sum(item["latency_ms"] for item in healthy if item["latency_ms"] is not None) / len(healthy)
+            )
+
+        return report
+    except Exception as exc:
+        report["error"] = str(exc)
+        return report
+
+
+def analyze_subscription(url: str = None, use_ai: bool = True, content: str = None) -> Dict:
+    """
+    分析订阅链接或订阅内容，自动推荐配置
+    
+    Args:
+        url: 订阅链接（与content二选一）
+        use_ai: 是否使用AI分析
+        content: 直接提供的订阅内容（与url二选一）
+    
+    Returns:
+        {
+            "is_node_list": bool,
+            "country_mapping": dict,
+            "exclude_keywords": list,
+            "confidence": float,  # 置信度 0-1
+            "suggestions": {
+                "name": str,
+                "info_keywords": dict
+            }
+        }
+    """
+    try:
+        if content is not None:
+            raw_content = content.encode('utf-8') if isinstance(content, str) else content
+        elif url:
+            with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+                response = client.get(url)
+                response.raise_for_status()
+                raw_content = response.content
+        else:
+            return {
+                "error": "必须提供url或content参数",
+                "confidence": 0
+            }
+
+        return analyze_subscription_raw(raw_content=raw_content, url=url, use_ai=use_ai)
     except Exception as e:
         return {
             "error": str(e),

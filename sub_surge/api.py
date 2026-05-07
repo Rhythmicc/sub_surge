@@ -606,7 +606,12 @@ async def analyze_subscription_url(request: dict, token: str = Depends(verify_to
         "analysis_method": "ai" | "static" | "error"  // 分析方法
     }
     """
-    from .analyzer import analyze_subscription
+    from .analyzer import (
+        analyze_subscription,
+        analyze_subscription_raw,
+        fetch_subscription_content,
+        inspect_subscription_node_health,
+    )
     
     url = request.get("url")
     content = request.get("content")
@@ -616,10 +621,35 @@ async def analyze_subscription_url(request: dict, token: str = Depends(verify_to
         raise HTTPException(status_code=400, detail="必须提供url或content参数")
     
     try:
-        result = analyze_subscription(url=url, content=content, use_ai=use_ai)
+        if content is not None:
+            raw_content = content
+            result = analyze_subscription(url=url, content=content, use_ai=use_ai)
+        else:
+            raw_content = await fetch_subscription_content(url)
+            result = analyze_subscription_raw(raw_content=raw_content, url=url, use_ai=use_ai)
+
+        if not result.get("error"):
+            health_report = await inspect_subscription_node_health(raw_content=raw_content)
+            result.setdefault("analysis", {})["node_health"] = health_report
+
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
+
+
+@app.get("/api/airports/{name}/node-health")
+async def get_airport_node_health(name: str, token: str = Depends(verify_token_from_request)):
+    """检测指定机场订阅内各节点的连通性"""
+    from .analyzer import inspect_subscription_node_health
+
+    airport = config_manager.get_airport(name)
+    if not airport:
+        raise HTTPException(status_code=404, detail="机场不存在")
+
+    try:
+        return await inspect_subscription_node_health(url=airport.url)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"节点检测失败: {str(e)}")
 
 
 @app.post("/api/preview")
