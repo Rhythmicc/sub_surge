@@ -168,19 +168,21 @@ def update_airport(
                 )
         rule_sets_config = "\n".join(rule_sets_lines)
         
+        effective_update_interval = 0 if airport_config.disable_auto_update else global_config.interval
+
         # 构建配置参数
         config_params = {
             "cos_url": f"{global_config.txcos_domain}/{airport_config.key}",
             "proxies": "\n".join(proxy_list),
             "proxies_one_line": ",".join([p.split("=")[0].strip() for p in proxy_list if p]),
-            "module_panel": traffic_module_template["panel"].format(name=airport_config.name, update_interval=global_config.interval),
+            "module_panel": traffic_module_template["panel"].format(name=airport_config.name, update_interval=effective_update_interval),
             "module_script": traffic_module_template["script"].format(
                 name=airport_config.name,
                 url=encoded_url,
                 reset=airport_config.reset_day,
                 color=color,
             ),
-            "update_interval": global_config.interval,
+            "update_interval": effective_update_interval,
             "host": host_config,
             "regions": ",".join(regions.keys()),
             "region_strategy": "\n".join([
@@ -361,9 +363,10 @@ def merge_airports(
             
             encoded_url = urllib.parse.quote(airport.url, safe="")
             color = airport.panel_color or f"#{random.randint(0, 0xFFFFFF):06X}"
+            effective_update_interval = 0 if airport.disable_auto_update else global_config.interval
             
             panel_configs.append(
-                traffic_module_template["panel"].format(name=name, update_interval=global_config.interval)
+                traffic_module_template["panel"].format(name=name, update_interval=effective_update_interval)
             )
             script_configs.append(
                 traffic_module_template["script"].format(

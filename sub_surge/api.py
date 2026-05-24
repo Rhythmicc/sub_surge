@@ -182,6 +182,8 @@ class AddAirportRequest(BaseModel):
     key: str
     reset_day: int = 30
     is_node_list: bool = False
+    enable_clash: bool = False
+    disable_auto_update: bool = False
     exclude_keywords: Optional[List[str]] = None
     country_mapping: Optional[Dict[str, str]] = None
     name_regex_replacements: Optional[List[Dict[str, str]]] = None
@@ -404,6 +406,8 @@ async def add_airport(request: AddAirportRequest, token: str = Depends(verify_to
         "key": request.key,
         "reset_day": request.reset_day,
         "is_node_list": request.is_node_list,
+        "enable_clash": request.enable_clash,
+        "disable_auto_update": request.disable_auto_update,
         "parser_config": {
             "exclude_keywords": request.exclude_keywords or [],
             "country_name_mapping": request.country_mapping or {},
@@ -428,7 +432,8 @@ async def add_airport(request: AddAirportRequest, token: str = Depends(verify_to
 @app.put("/api/airports/{name}")
 async def update_airport_config(name: str, request: AddAirportRequest, token: str = Depends(verify_token_from_request)):
     """更新机场配置"""
-    if not config_manager.get_airport(name):
+    existing_airport = config_manager.get_airport(name)
+    if not existing_airport:
         raise HTTPException(status_code=404, detail="机场不存在")
     
     try:
@@ -439,12 +444,15 @@ async def update_airport_config(name: str, request: AddAirportRequest, token: st
             "key": request.key,
             "reset_day": request.reset_day,
             "is_node_list": request.is_node_list,
+            "enable_clash": request.enable_clash,
+            "clash_key": existing_airport.clash_key,
+            "disable_auto_update": request.disable_auto_update,
             "parser_config": {
                 "exclude_keywords": request.exclude_keywords or [],
                 "country_name_mapping": request.country_mapping or {},
                 "name_regex_replacements": request.name_regex_replacements or []
             },
-            "info_keywords": request.info_keywords or {
+            "info_extractor": request.info_keywords or {
                 "traffic_keywords": ["Bandwidth", "流量"],
                 "reset_keywords": ["Reset", "重置"],
                 "expire_keywords": ["Date", "到期"]
@@ -766,6 +774,7 @@ async def get_airport_config_preview(request: dict, token: str = Depends(verify_
     url = request.get("url") or ""
     key = request.get("key") or "airport/example.conf"
     reset_day = int(request.get("reset_day") or 30)
+    disable_auto_update = bool(request.get("disable_auto_update") or False)
 
     # 生成 COS URL
     if global_config.txcos_domain:
@@ -773,7 +782,7 @@ async def get_airport_config_preview(request: dict, token: str = Depends(verify_
     else:
         cos_url = f"<未配置COS域名>/{key}"
 
-    update_interval = global_config.interval or 43200
+    update_interval = 0 if disable_auto_update else (global_config.interval or 43200)
 
     # 生成 Panel 和 Script 部分
     module_panel = traffic_module_template['panel'].format(
@@ -842,7 +851,8 @@ async def get_airport_config_preview(request: dict, token: str = Depends(verify_
         "preview": preview_config,
         "rule_count": len(enabled_rules),
         "cos_url": cos_url,
-        "update_interval": update_interval
+        "update_interval": update_interval,
+        "disable_auto_update": disable_auto_update
     }
 
 
@@ -1054,6 +1064,10 @@ async def auto_update_task_func():
                 try:
                     airport = config_manager.get_airport(airport_name)
                     if airport:
+                        if airport.disable_auto_update:
+                            logger.info(f"跳过机场 {airport_name}: 已关闭全局定时更新")
+                            continue
+
                         logger.info(f"更新机场: {airport_name}")
                         # 在线程池中执行阻塞的更新操作
                         loop = asyncio.get_event_loop()
@@ -1073,19 +1087,30 @@ async def auto_update_task_func():
             # 如果配置了合并订阅，则执行合并
             if global_config.merge_airports and len(global_config.merge_airports) > 0:
                 try:
-                    logger.info(f"合并订阅: {global_config.merge_airports}")
-                    # 在线程池中执行阻塞的合并操作
-                    loop = asyncio.get_event_loop()
-                    result = await loop.run_in_executor(
-                        None,
-                        merge_airports,
-                        global_config.merge_airports,
-                        config_manager
-                    )
-                    if result.get('success'):
-                        logger.info("订阅合并成功")
+                    merge_airports_to_update = []
+                    for airport_name in global_config.merge_airports:
+                        airport = config_manager.get_airport(airport_name)
+                        if airport and airport.disable_auto_update:
+                            logger.info(f"自动合并跳过机场 {airport_name}: 已关闭全局定时更新")
+                            continue
+                        merge_airports_to_update.append(airport_name)
+
+                    if not merge_airports_to_update:
+                        logger.info("自动合并已跳过: 所有合并机场均已关闭全局定时更新")
                     else:
-                        logger.error(f"订阅合并失败: {result.get('error')}")
+                        logger.info(f"合并订阅: {merge_airports_to_update}")
+                        # 在线程池中执行阻塞的合并操作
+                        loop = asyncio.get_event_loop()
+                        result = await loop.run_in_executor(
+                            None,
+                            merge_airports,
+                            merge_airports_to_update,
+                            config_manager
+                        )
+                        if result.get('success'):
+                            logger.info("订阅合并成功")
+                        else:
+                            logger.error(f"订阅合并失败: {result.get('error')}")
                 except Exception as e:
                     logger.error(f"合并订阅时出错: {str(e)}")
                     

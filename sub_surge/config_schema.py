@@ -86,6 +86,12 @@ class AirportConfig(BaseModel):
         None,
         description="Clash 配置的腾讯云COS存储路径"
     )
+
+    # 自动更新配置
+    disable_auto_update: bool = Field(
+        default=False,
+        description="是否关闭全局定时更新"
+    )
     
     # 解析配置
     parser_config: ProxyParserConfig = Field(

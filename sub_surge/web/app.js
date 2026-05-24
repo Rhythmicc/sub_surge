@@ -586,6 +586,7 @@ function createAirportCard(airport) {
         ${clashUrl ? `<p style="font-size: 12px; color: #888;"><strong>Clash链接:</strong> <span style="display: inline-block; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;" title="${clashUrl}">${clashUrl}</span></p>` : ''}
         <p><strong>存储路径:</strong> ${airport.key}</p>
         <p><strong>重置周期:</strong> ${airport.reset_day}天</p>
+        ${airport.disable_auto_update ? '<p style="color: #b26a00;"><strong>定时更新:</strong> 已关闭</p>' : ''}
         <div class="actions">
             <button class="btn btn-primary btn-sm" onclick='updateAirport(${airportNameArg})'>
                 更新
@@ -1082,7 +1083,8 @@ document.getElementById('add-airport-form').addEventListener('submit', async (e)
         key: formData.get('key'),
         reset_day: parseInt(formData.get('reset_day')) || 30,
         is_node_list: formData.get('is_node_list') === 'on',
-        enable_clash: formData.get('enable_clash') === 'on'
+        enable_clash: formData.get('enable_clash') === 'on',
+        disable_auto_update: formData.get('disable_auto_update') === 'on'
     };
     
     // 处理排除关键词
@@ -1198,6 +1200,7 @@ function editAirport(name) {
     document.getElementById('reset_day').value = airport.reset_day;
     document.getElementById('is_node_list').checked = airport.is_node_list;
     document.getElementById('enable_clash').checked = airport.enable_clash || false;
+    document.getElementById('disable_auto_update').checked = airport.disable_auto_update || false;
     
     if (airport.parser_config.exclude_keywords) {
         document.getElementById('exclude_keywords').value = 
@@ -1527,6 +1530,7 @@ async function loadAirportConfigPreview() {
     const url = (document.getElementById('url')?.value || '').trim();
     const key = (document.getElementById('key')?.value || '').trim() || 'airport/example.conf';
     const resetDay = parseInt(document.getElementById('reset_day')?.value) || 30;
+    const disableAutoUpdate = document.getElementById('disable_auto_update')?.checked || false;
 
     // 简单提示必填
     if (!url) {
@@ -1541,7 +1545,7 @@ async function loadAirportConfigPreview() {
         const response = await fetch(`${API_BASE}/api/airports/config-preview`, {
             method: 'POST',
             headers: getAuthHeaders(),
-            body: JSON.stringify({ name, url, key, reset_day: resetDay })
+            body: JSON.stringify({ name, url, key, reset_day: resetDay, disable_auto_update: disableAutoUpdate })
         });
 
         if (!response.ok) {
@@ -1558,7 +1562,7 @@ async function loadAirportConfigPreview() {
                 <span>📦 <strong>存储路径：</strong><code style="background:#c8e6fa;padding:2px 6px;border-radius:4px;font-size:12px;">${key}</code></span>
                 <span>🔗 <strong>订阅URL：</strong><code style="background:#c8e6fa;padding:2px 6px;border-radius:4px;font-size:12px;word-break:break-all;">${data.cos_url}</code></span>
                 <span>📋 <strong>已启用规则：</strong><strong style="color:#1976D2;">${data.rule_count}</strong> 条</span>
-                <span>⏱ <strong>更新间隔：</strong>${data.update_interval}s</span>
+                <span>⏱ <strong>更新间隔：</strong>${data.disable_auto_update ? '已关闭' : `${data.update_interval}s`}</span>
             </div>
             <p style="margin-top:10px;margin-bottom:0;color:#555;font-size:12px;">
                 ⚠️ 以下为<strong>结构预览</strong>：节点占位符将在执行「更新」后替换为真实节点，rules 基于当前全局规则集。
