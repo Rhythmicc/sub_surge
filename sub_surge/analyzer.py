@@ -211,6 +211,33 @@ def extract_node_candidates(decoded_content: str) -> List[Dict[str, Any]]:
     return nodes
 
 
+def deduplicate_node_candidates(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """按节点入口去重，重复入口优先保留 AnyTLS 协议"""
+    result: List[Dict[str, Any]] = []
+    endpoint_indexes: Dict[Tuple[str, int], int] = {}
+
+    for node in nodes:
+        server = str(node.get("server") or "").lower()
+        port = node.get("port")
+        if not server or port is None:
+            result.append(node)
+            continue
+
+        key = (server, int(port))
+        existing_index = endpoint_indexes.get(key)
+        if existing_index is None:
+            endpoint_indexes[key] = len(result)
+            result.append(node)
+            continue
+
+        protocol = str(node.get("protocol") or "").lower()
+        existing_protocol = str(result[existing_index].get("protocol") or "").lower()
+        if protocol == "anytls" and existing_protocol != "anytls":
+            result[existing_index] = node
+
+    return result
+
+
 def analyze_subscription_raw(raw_content: Any, url: str = None, use_ai: bool = True) -> Dict:
     """基于原始订阅内容进行分析"""
     if not raw_content:
@@ -417,7 +444,7 @@ async def inspect_subscription_node_health(
                 return report
 
         decoded_content, _ = decode_subscription_content(raw_content)
-        nodes = extract_node_candidates(decoded_content)
+        nodes = deduplicate_node_candidates(extract_node_candidates(decoded_content))
         report["total_nodes"] = len(nodes)
 
         if not nodes:

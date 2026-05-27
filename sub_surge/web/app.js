@@ -82,6 +82,40 @@ function closeNodeHealthPanel() {
     document.body.style.overflow = '';
 }
 
+function getNodeHealthSourceControls(name, activeSource) {
+    const airportNameArg = JSON.stringify(name);
+    const sources = [
+        { value: 'cos', label: '对象存储配置' },
+        { value: 'subscription', label: '订阅链接' }
+    ];
+
+    return `
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; padding: 10px 12px; background: rgba(255,255,255,0.92); border: 1px solid #d8e7f4; border-radius: 12px; flex-wrap: wrap;">
+            <div style="font-size: 13px; color: #455a64;">节点来源</div>
+            <div style="display: inline-flex; gap: 6px; padding: 4px; background: #eef5fb; border-radius: 10px;">
+                ${sources.map(source => {
+                    const isActive = source.value === activeSource;
+                    return `<button type="button" onclick='checkAirportNodeHealth(${airportNameArg}, null, "${source.value}")' style="border: 1px solid ${isActive ? '#1976d2' : 'transparent'}; background: ${isActive ? '#1976d2' : '#fff'}; color: ${isActive ? '#fff' : '#455a64'}; border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px;">${source.label}</button>`;
+                }).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function getNodeHealthLoadingHtml(name, source) {
+    return `
+        ${getNodeHealthSourceControls(name, source)}
+        <div style="padding: 18px; background: rgba(255,255,255,0.92); border-radius: 18px; border: 1px solid #d8e7f4; color: #607d8b; font-size: 14px; line-height: 1.8;">正在检查节点入口连通性，请稍候...</div>
+    `;
+}
+
+function getNodeHealthErrorHtml(name, source, message) {
+    return `
+        ${getNodeHealthSourceControls(name, source)}
+        <div style="padding: 18px; background: #ffebee; border-radius: 18px; color: #c62828; font-size: 14px; line-height: 1.8;">节点检查失败: ${escapeHtml(message || '未知错误')}</div>
+    `;
+}
+
 function renderNodeHealthReport(report, title = '节点入口检查') {
     if (!report) {
         return '';
@@ -90,6 +124,7 @@ function renderNodeHealthReport(report, title = '节点入口检查') {
     const results = Array.isArray(report.results) ? report.results : [];
     const verificationLabel = report.verification_label || '入口连通性';
     const recommendation = report.recommendation || '如需确认节点是否真的可代理出站，请接入 Clash.Meta、sing-box 或 Xray 这类代理内核发起真实请求。';
+    const sourceLabel = report.source_label || (report.source === 'subscription' ? '订阅链接' : '对象存储配置');
     const averageLatency = report.average_latency_ms === null || report.average_latency_ms === undefined
         ? '-'
         : `${report.average_latency_ms} ms`;
@@ -133,6 +168,7 @@ function renderNodeHealthReport(report, title = '节点入口检查') {
                 <div><strong>入口可达:</strong> ${report.healthy_count || 0}</div>
                 <div><strong>失败:</strong> ${report.unhealthy_count || 0}</div>
                 <div><strong>平均耗时:</strong> ${averageLatency}</div>
+                <div><strong>节点来源:</strong> ${escapeHtml(sourceLabel)}</div>
             </div>
             <div style="margin-bottom: 12px; padding: 10px 12px; background: #fff7e8; border: 1px solid #ffe1ad; border-radius: 12px; color: #8a5a00; font-size: 12px; line-height: 1.7;">
                 <strong>说明:</strong> ${escapeHtml(report.note || '当前结果仅表示服务端入口是否接受连接。')}
@@ -737,18 +773,20 @@ async function checkAirportsHealth(names) {
     }
 }
 
-async function checkAirportNodeHealth(name, button) {
-    const originalText = button.textContent;
-    button.disabled = true;
-    button.textContent = '检查中...';
+async function checkAirportNodeHealth(name, button = null, source = 'cos') {
+    const originalText = button ? button.textContent : null;
+    if (button) {
+        button.disabled = true;
+        button.textContent = '检查中...';
+    }
     openNodeHealthPanel(
         `${name} 节点检查`,
         '当前展示的是入口连通性检查，不直接等同于节点可否稳定代理出站。',
-        '<div style="padding: 18px; background: rgba(255,255,255,0.92); border-radius: 18px; border: 1px solid #d8e7f4; color: #607d8b; font-size: 14px; line-height: 1.8;">正在检查订阅中的节点入口连通性，请稍候...</div>'
+        getNodeHealthLoadingHtml(name, source)
     );
 
     try {
-        const response = await fetch(`${API_BASE}/api/airports/${encodeURIComponent(name)}/node-health`, {
+        const response = await fetch(`${API_BASE}/api/airports/${encodeURIComponent(name)}/node-health?source=${encodeURIComponent(source)}`, {
             headers: getAuthHeaders()
         });
         const result = await response.json();
@@ -757,7 +795,7 @@ async function checkAirportNodeHealth(name, button) {
             openNodeHealthPanel(
                 `${name} 节点检查`,
                 '当前展示的是入口连通性检查，不直接等同于节点可否稳定代理出站。',
-                `<div style="padding: 18px; background: #ffebee; border-radius: 18px; color: #c62828; font-size: 14px; line-height: 1.8;">节点检查失败: ${escapeHtml(result.detail || '未知错误')}</div>`
+                getNodeHealthErrorHtml(name, source, result.detail || '未知错误')
             );
             showAlert(`节点检测失败: ${result.detail || '未知错误'}`, 'error');
             return;
@@ -766,18 +804,20 @@ async function checkAirportNodeHealth(name, button) {
         openNodeHealthPanel(
             `${name} 节点检查`,
             '当前展示的是入口连通性检查，不直接等同于节点可否稳定代理出站。',
-            renderNodeHealthReport(result, `${name} 节点检查`)
+            `${getNodeHealthSourceControls(name, source)}${renderNodeHealthReport(result, `${name} 节点检查`)}`
         );
     } catch (error) {
         openNodeHealthPanel(
             `${name} 节点检查`,
             '当前展示的是入口连通性检查，不直接等同于节点可否稳定代理出站。',
-            `<div style="padding: 18px; background: #ffebee; border-radius: 18px; color: #c62828; font-size: 14px; line-height: 1.8;">节点检查失败: ${escapeHtml(error.message)}</div>`
+            getNodeHealthErrorHtml(name, source, error.message)
         );
         showAlert(`节点检测失败: ${error.message}`, 'error');
     } finally {
-        button.disabled = false;
-        button.textContent = originalText;
+        if (button) {
+            button.disabled = false;
+            button.textContent = originalText;
+        }
     }
 }
 

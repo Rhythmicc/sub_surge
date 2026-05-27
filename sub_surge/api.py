@@ -646,16 +646,44 @@ async def analyze_subscription_url(request: dict, token: str = Depends(verify_to
 
 
 @app.get("/api/airports/{name}/node-health")
-async def get_airport_node_health(name: str, token: str = Depends(verify_token_from_request)):
+async def get_airport_node_health(
+    name: str,
+    source: str = "cos",
+    token: str = Depends(verify_token_from_request)
+):
     """检测指定机场订阅内各节点的连通性"""
-    from .analyzer import inspect_subscription_node_health
+    from .analyzer import fetch_subscription_content, inspect_subscription_node_health
 
     airport = config_manager.get_airport(name)
     if not airport:
         raise HTTPException(status_code=404, detail="机场不存在")
 
+    if source not in ("cos", "subscription"):
+        raise HTTPException(status_code=400, detail="节点来源必须是 cos 或 subscription")
+
     try:
-        return await inspect_subscription_node_health(url=airport.url)
+        if source == "cos":
+            global_config = config_manager.get_global_config()
+            if not global_config.txcos_domain:
+                raise HTTPException(status_code=400, detail="未配置腾讯云对象存储域名")
+
+            from .updater import build_cos_url
+
+            config_url = build_cos_url(global_config, airport.key)
+            raw_content = await fetch_subscription_content(config_url)
+            report = await inspect_subscription_node_health(raw_content=raw_content)
+            report["source"] = "cos"
+            report["source_label"] = "对象存储配置"
+            report["source_url"] = config_url
+            return report
+
+        report = await inspect_subscription_node_health(url=airport.url)
+        report["source"] = "subscription"
+        report["source_label"] = "订阅链接"
+        report["source_url"] = airport.url
+        return report
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"节点检测失败: {str(e)}")
 
