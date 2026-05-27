@@ -82,6 +82,86 @@ def parse_host_list(content: str) -> str:
     return host
 
 
+def build_cos_url(global_config: GlobalConfig, key: str) -> str:
+    """构建对象存储中已生成配置的访问 URL"""
+    if not global_config.txcos_domain:
+        raise ValueError("未配置腾讯云COS域名")
+    if not key:
+        raise ValueError("未配置COS存储路径")
+    return f"{global_config.txcos_domain.rstrip('/')}/{key.lstrip('/')}"
+
+
+def download_generated_config(global_config: GlobalConfig, key: str) -> str:
+    """下载对象存储中已经生成好的配置文件"""
+    try:
+        import httpx
+
+        url = build_cos_url(global_config, key)
+        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+            response = client.get(url)
+            response.raise_for_status()
+            return response.text
+    except Exception as e:
+        raise Exception(f"下载对象存储配置失败: {str(e)}")
+
+
+def rename_airport_proxies(proxy_list: List[str], airport_name: str) -> List[str]:
+    """给合并后的节点名称添加机场前缀"""
+    renamed_list = []
+    for item in proxy_list:
+        parts = item.split("=", 1)
+        if len(parts) == 2:
+            original_name = parts[0].strip()
+            if original_name == "DIRECT":
+                continue
+            rest = parts[1]
+            item = f"{airport_name}-{original_name} = {rest}"
+        renamed_list.append(item)
+    return renamed_list
+
+
+def load_airport_proxies_from_cos(
+    airport_config: AirportConfig,
+    global_config: GlobalConfig
+) -> List[str]:
+    """从对象存储中的已生成配置读取机场节点"""
+    content = download_generated_config(global_config, airport_config.key)
+    lines = [line.strip() for line in content.splitlines()]
+    proxy_list, _ = parse_with_config(lines, airport_config)
+
+    if not proxy_list:
+        raise Exception("对象存储配置中未解析到代理节点")
+
+    return rename_airport_proxies(proxy_list, airport_config.name)
+
+
+def load_airport_proxies_by_updating(
+    airport_config: AirportConfig,
+    global_config: GlobalConfig
+) -> List[str]:
+    """回退到旧逻辑：即时更新机场后读取临时配置"""
+    result = update_airport(airport_config, global_config, disable_upload=True)
+    if not result.get("success"):
+        raise Exception(result.get("error") or "即时更新机场失败")
+
+    conf_file = f"{airport_config.name}.conf"
+    if not os.path.exists(conf_file):
+        raise Exception(f"未找到即时生成的配置文件: {conf_file}")
+
+    try:
+        with open(conf_file, 'r', encoding='utf-8') as f:
+            lines = [line.strip() for line in f.readlines()]
+
+        proxy_list, _ = parse_with_config(lines, airport_config)
+        if not proxy_list:
+            raise Exception("即时生成配置中未解析到代理节点")
+
+        return rename_airport_proxies(proxy_list, airport_config.name)
+    finally:
+        if os.path.exists(conf_file):
+            os.remove(conf_file)
+
+
 def update_airport(
     airport_config: AirportConfig, 
     global_config: GlobalConfig,
@@ -287,38 +367,25 @@ def merge_airports(
         import random
         
         all_proxies = []
+        merged_airports = []
+        source_warnings = []
         
         # 收集所有机场的代理
         for name in airport_names:
             airport = config_manager.get_airport(name)
             if not airport:
                 continue
-            
-            # 更新单个机场（不上传）
-            result = update_airport(airport, global_config, disable_upload=True)
-            if result.get("success"):
-                # 读取生成的配置文件
-                conf_file = f"{name}.conf"
-                if os.path.exists(conf_file):
-                    with open(conf_file, 'r', encoding='utf-8') as f:
-                        lines = [line.strip() for line in f.readlines()]
-                    
-                    proxy_list, _ = parse_with_config(lines, airport)
-                    renamed_list = []
-                    for item in proxy_list:
-                        parts = item.split("=", 1)
-                        if len(parts) == 2:
-                            original_name = parts[0].strip()
-                            if original_name == 'DIRECT':
-                                continue
-                            rest = parts[1]
-                            new_name = f"{name}-{original_name}"
-                            item = f"{new_name} = {rest}"
-                        renamed_list.append(item)
 
-                    all_proxies.extend(renamed_list)
-                    
-                    os.remove(conf_file)
+            try:
+                renamed_list = load_airport_proxies_from_cos(airport, global_config)
+            except Exception as e:
+                warning = f"{name}: 对象存储配置不可用，回退到订阅更新: {e}"
+                source_warnings.append(warning)
+                print(warning)
+                renamed_list = load_airport_proxies_by_updating(airport, global_config)
+
+            all_proxies.extend(renamed_list)
+            merged_airports.append(name)
 
         # 区域分组
         aim_regions = {
@@ -389,7 +456,7 @@ def merge_airports(
         config_params = {
             "cos_url": f"{global_config.txcos_domain}/{global_config.merge_key}",
             "proxies": "\n".join(all_proxies),
-            "proxies_one_line": ",".join([p.split("=")[0].strip() for p in all_proxies[1:] if p]),
+            "proxies_one_line": ",".join([p.split("=")[0].strip() for p in all_proxies if p]),
             "module_panel": "\n".join(panel_configs),
             "module_script": "\n".join(script_configs),
             "update_interval": global_config.interval,
@@ -430,9 +497,10 @@ def merge_airports(
         return {
             "success": True,
             "url": result_url,
-            "airport_count": len(airport_names),
-            "proxy_count": len(all_proxies) - 1,
-            "regions": list(regions.keys())
+            "airport_count": len(merged_airports),
+            "proxy_count": len(all_proxies),
+            "regions": list(regions.keys()),
+            "warnings": source_warnings
         }
     
     except Exception as e:
