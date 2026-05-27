@@ -5,7 +5,7 @@
 import os
 import base64
 import urllib.parse
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 from .config_schema import AirportConfig, GlobalConfig
 from .parser import parse_with_config
@@ -105,6 +105,53 @@ def download_generated_config(global_config: GlobalConfig, key: str) -> str:
         raise Exception(f"下载对象存储配置失败: {str(e)}")
 
 
+def parse_proxy_endpoint(proxy_line: str) -> Optional[Tuple[str, str, str]]:
+    """解析 Surge 节点的协议、地址和端口"""
+    if "=" not in proxy_line:
+        return None
+
+    _, config = proxy_line.split("=", 1)
+    parts = [part.strip() for part in config.split(",")]
+    if len(parts) < 3:
+        return None
+
+    protocol = parts[0].lower()
+    host = parts[1].lower()
+    port = parts[2]
+    if not protocol or not host or not port:
+        return None
+
+    return protocol, host, port
+
+
+def deduplicate_proxies(proxy_list: List[str]) -> List[str]:
+    """按节点地址和端口去重，重复时优先保留 AnyTLS"""
+    result = []
+    endpoint_indexes = {}
+
+    for proxy in proxy_list:
+        endpoint = parse_proxy_endpoint(proxy)
+        if endpoint is None:
+            result.append(proxy)
+            continue
+
+        protocol, host, port = endpoint
+        key = (host, port)
+        existing_index = endpoint_indexes.get(key)
+
+        if existing_index is None:
+            endpoint_indexes[key] = len(result)
+            result.append(proxy)
+            continue
+
+        existing_endpoint = parse_proxy_endpoint(result[existing_index])
+        existing_protocol = existing_endpoint[0] if existing_endpoint else ""
+        if protocol == "anytls" and existing_protocol != "anytls":
+            result[existing_index] = proxy
+
+    return result
+
+
 def rename_airport_proxies(proxy_list: List[str], airport_name: str) -> List[str]:
     """给合并后的节点名称添加机场前缀"""
     renamed_list = []
@@ -128,6 +175,7 @@ def load_airport_proxies_from_cos(
     content = download_generated_config(global_config, airport_config.key)
     lines = [line.strip() for line in content.splitlines()]
     proxy_list, _ = parse_with_config(lines, airport_config)
+    proxy_list = deduplicate_proxies(proxy_list)
 
     if not proxy_list:
         raise Exception("对象存储配置中未解析到代理节点")
@@ -153,6 +201,7 @@ def load_airport_proxies_by_updating(
             lines = [line.strip() for line in f.readlines()]
 
         proxy_list, _ = parse_with_config(lines, airport_config)
+        proxy_list = deduplicate_proxies(proxy_list)
         if not proxy_list:
             raise Exception("即时生成配置中未解析到代理节点")
 
@@ -193,6 +242,8 @@ def update_airport(
                 if info_value in line:
                     proxy_list.remove(line)
                     break
+
+        proxy_list = deduplicate_proxies(proxy_list)
         
         # 生成配置文件
         import random
