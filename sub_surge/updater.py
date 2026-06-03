@@ -8,7 +8,7 @@ import urllib.parse
 from typing import Dict, List, Optional, Tuple
 
 from .config_schema import AirportConfig, GlobalConfig
-from .parser import parse_with_config
+from .parser import clash_content_to_surge_proxy_lines, parse_with_config
 from .template import conf_template, traffic_module_template
 
 from QuickProject import QproDefaultConsole
@@ -230,6 +230,11 @@ def update_airport(
             
             # 使用配置驱动的解析器
             proxy_list, other_infos = parse_with_config(lines, airport_config)
+            if not proxy_list:
+                clash_proxy_lines = clash_content_to_surge_proxy_lines(content)
+                if clash_proxy_lines:
+                    lines = ["[Proxy]"] + clash_proxy_lines + ["["]
+                    proxy_list, other_infos = parse_with_config(lines, airport_config)
         
         # 处理信息节点
         all_proxy_list = proxy_list.copy()

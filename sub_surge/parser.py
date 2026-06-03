@@ -213,6 +213,106 @@ def parse_with_config(lines: List[str], airport_config: AirportConfig):
     return proxy_list, other_infos
 
 
+def is_info_proxy_name(name: str) -> bool:
+    """判断 Clash 节点名是否为流量/到期信息节点"""
+    normalized = (name or "").lower()
+    info_keywords = [
+        "traffic",
+        "bandwidth",
+        "expire",
+        "reset",
+        "剩余",
+        "流量",
+        "到期",
+        "重置",
+        "days left",
+        "gb",
+        " g |",
+    ]
+    return any(keyword in normalized for keyword in info_keywords)
+
+
+def _format_bool(value) -> str:
+    if isinstance(value, str):
+        return "false" if value.strip().lower() in ("false", "0", "no", "off") else "true"
+    return str(bool(value)).lower()
+
+
+def _append_optional_param(params: List[str], key: str, value):
+    if value is not None and value != "":
+        params.append(f"{key}={value}")
+
+
+def clash_proxy_to_surge(proxy: Dict) -> str:
+    """将 Clash 代理节点转换为 Surge [Proxy] 行"""
+    if not isinstance(proxy, dict):
+        return ""
+
+    name = str(proxy.get("name") or "").strip()
+    proxy_type = str(proxy.get("type") or "").strip().lower()
+    server = str(proxy.get("server") or "").strip()
+    port = proxy.get("port")
+
+    if not name or not proxy_type or not server or port is None:
+        return ""
+    if is_info_proxy_name(name):
+        return ""
+
+    params = []
+    surge_type = proxy_type
+
+    if proxy_type == "ss":
+        _append_optional_param(params, "encrypt-method", proxy.get("cipher"))
+        _append_optional_param(params, "password", proxy.get("password"))
+    elif proxy_type in ("trojan", "anytls"):
+        _append_optional_param(params, "password", proxy.get("password"))
+        _append_optional_param(params, "sni", proxy.get("sni"))
+        if "skip-cert-verify" in proxy:
+            params.append(f"skip-cert-verify={_format_bool(proxy.get('skip-cert-verify'))}")
+    elif proxy_type == "vmess":
+        _append_optional_param(params, "username", proxy.get("uuid"))
+        _append_optional_param(params, "alter-id", proxy.get("alterId"))
+        _append_optional_param(params, "encrypt-method", proxy.get("cipher"))
+        if "tls" in proxy:
+            params.append(f"tls={_format_bool(proxy.get('tls'))}")
+    else:
+        return ""
+
+    if "tfo" in proxy:
+        params.append(f"tfo={_format_bool(proxy.get('tfo'))}")
+    if "udp" in proxy:
+        params.append(f"udp-relay={_format_bool(proxy.get('udp'))}")
+    elif "udp-relay" in proxy:
+        params.append(f"udp-relay={_format_bool(proxy.get('udp-relay'))}")
+
+    params_string = ", ".join(params)
+    suffix = f", {params_string}" if params_string else ""
+    return f"{name} = {surge_type}, {server}, {port}{suffix}"
+
+
+def clash_content_to_surge_proxy_lines(clash_content: str) -> List[str]:
+    """从 Clash YAML 中提取并转换代理节点为 Surge [Proxy] 行"""
+    try:
+        import yaml
+
+        data = yaml.safe_load(clash_content)
+        if not isinstance(data, dict):
+            return []
+
+        proxies = data.get("proxies")
+        if not isinstance(proxies, list):
+            return []
+
+        return [
+            line
+            for line in (clash_proxy_to_surge(proxy) for proxy in proxies)
+            if line
+        ]
+    except Exception as e:
+        print(f"解析 Clash 节点失败: {e}")
+        return []
+
+
 def surge_proxy_to_clash(surge_line: str) -> Dict:
     """
     将 Surge 代理配置转换为 Clash 格式
