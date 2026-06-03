@@ -603,6 +603,8 @@ function createAirportCard(airport) {
     const clashUrl = airport.enable_clash && airport.clash_key && globalConfig.txcos_domain
         ? `${globalConfig.txcos_domain.replace(/\/$/, '')}/${airport.clash_key}`
         : null;
+    const clashActionLabel = clashUrl ? '🔄 重转Clash' : '🔄 转Clash';
+    const clashActionTitle = clashUrl ? '重新生成并覆盖 Clash 订阅' : '生成 Clash 订阅';
     
     card.innerHTML = `
         <input type="checkbox" class="airport-select" value="${airport.name}" onchange="updateBatchActionState()">
@@ -614,7 +616,7 @@ function createAirportCard(airport) {
             <div style="display: flex; gap: 6px;">
                 ${txcosUrl ? `<button class="btn btn-sm" onclick="copyToClipboard('${txcosUrl}')" style="padding: 4px 8px; font-size: 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;" title="复制 Surge 链接">📋 Surge</button>` : ''}
                 ${clashUrl ? `<button class="btn btn-sm" onclick="copyToClipboard('${clashUrl}')" style="padding: 4px 8px; font-size: 12px; background: #f093fb; color: white; border: none; border-radius: 4px; cursor: pointer;" title="复制 Clash 链接">📋 Clash</button>` : ''}
-                ${txcosUrl && !clashUrl ? `<button class="btn btn-sm" onclick='convertToClash(${airportNameArg})' style="padding: 4px 8px; font-size: 12px; background: #48c774; color: white; border: none; border-radius: 4px; cursor: pointer;" title="生成 Clash 订阅">🔄 转Clash</button>` : ''}
+                ${txcosUrl ? `<button class="btn btn-sm" onclick='convertToClash(${airportNameArg}, ${Boolean(clashUrl)})' style="padding: 4px 8px; font-size: 12px; background: #48c774; color: white; border: none; border-radius: 4px; cursor: pointer;" title="${clashActionTitle}">${clashActionLabel}</button>` : ''}
             </div>
         </h3>
         <p style="font-size: 12px; color: #888;"><strong>订阅链接:</strong> <span style="display: inline-block; max-width: 75%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;" title="${airport.url}">${airport.url}</span></p>
@@ -1278,8 +1280,12 @@ async function deleteAirport(name) {
 }
 
 // 转换为 Clash 配置
-async function convertToClash(name) {
-    if (!confirm(`确定要为机场 "${name}" 生成 Clash 配置吗？`)) {
+async function convertToClash(name, hasExistingClash = false) {
+    const confirmMessage = hasExistingClash
+        ? `确定要为机场 "${name}" 重新生成 Clash 配置吗？\n\n这会覆盖对象存储中的现有 Clash 配置。`
+        : `确定要为机场 "${name}" 生成 Clash 配置吗？`;
+    
+    if (!confirm(confirmMessage)) {
         return;
     }
     
