@@ -348,9 +348,11 @@ def update_airport(
         # 如果启用 Clash，生成 Clash 配置
         clash_result_url = None
         if airport_config.enable_clash:
-            from .parser import generate_clash_config
+            from .parser import generate_clash_config, get_clash_proxy_count
             
             clash_content = generate_clash_config(conf_content, include_rules=True)
+            if get_clash_proxy_count(clash_content) == 0:
+                raise Exception("生成的 Clash 配置中未解析到任何节点，已跳过上传，避免覆盖现有 Clash 配置")
             
             # 保存临时 Clash 配置文件
             clash_temp_file = f".{airport_config.name}_clash.yaml"
