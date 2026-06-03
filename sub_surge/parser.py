@@ -271,6 +271,14 @@ def surge_proxy_to_clash(surge_line: str) -> Dict:
             clash_proxy['sni'] = param_dict.get('sni', server)
             if 'skip-cert-verify' in param_dict:
                 clash_proxy['skip-cert-verify'] = param_dict['skip-cert-verify'].lower() == 'true'
+
+        # AnyTLS (mihomo/Clash.Meta)
+        elif proxy_type == 'anytls':
+            clash_proxy['type'] = 'anytls'
+            clash_proxy['password'] = param_dict.get('password', '')
+            clash_proxy['sni'] = param_dict.get('sni', server)
+            if 'skip-cert-verify' in param_dict:
+                clash_proxy['skip-cert-verify'] = param_dict['skip-cert-verify'].lower() == 'true'
         
         # VMess
         elif proxy_type == 'vmess':
@@ -290,6 +298,24 @@ def surge_proxy_to_clash(surge_line: str) -> Dict:
     except Exception as e:
         print(f"转换代理节点失败 {surge_line[:50]}: {e}")
         return None
+
+
+def get_clash_proxy_count(clash_content: str) -> int:
+    """读取 Clash 配置中的代理数量"""
+    try:
+        import yaml
+
+        data = yaml.safe_load(clash_content)
+        if not isinstance(data, dict):
+            return 0
+
+        proxies = data.get('proxies')
+        if not isinstance(proxies, list):
+            return 0
+
+        return len([proxy for proxy in proxies if isinstance(proxy, dict) and proxy.get('name')])
+    except Exception:
+        return 0
 
 
 def _get_rule_set_cache_path(url: str) -> str:
@@ -504,7 +530,7 @@ def generate_clash_config(surge_content: str, include_rules: bool = True) -> str
                     key = key.strip()
                     value = value.strip()
                     params[key] = value
-                else:
+                elif item:
                     # 这是代理名称
                     proxies_list.append(item)
             
@@ -634,4 +660,3 @@ def generate_clash_config(surge_content: str, include_rules: bool = True) -> str
     
     # 转换为 YAML
     return yaml.dump(config, allow_unicode=True, sort_keys=False)
-

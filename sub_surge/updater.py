@@ -244,6 +244,8 @@ def update_airport(
                     break
 
         proxy_list = deduplicate_proxies(proxy_list)
+        if not proxy_list:
+            raise Exception("未解析到任何代理节点，已跳过生成和上传，避免覆盖现有配置")
         
         # 生成配置文件
         import random

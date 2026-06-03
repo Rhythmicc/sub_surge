@@ -516,7 +516,7 @@ async def convert_to_clash(name: str, token: str = Depends(verify_token_from_req
     
     try:
         import httpx
-        from .parser import generate_clash_config
+        from .parser import generate_clash_config, get_clash_proxy_count
         
         # 下载 Surge 配置
         surge_url = f"{global_config.txcos_domain}/{airport.key}"
@@ -527,6 +527,13 @@ async def convert_to_clash(name: str, token: str = Depends(verify_token_from_req
         
         # 转换为 Clash 格式
         clash_content = generate_clash_config(surge_content, include_rules=True)
+        clash_proxy_count = get_clash_proxy_count(clash_content)
+
+        if clash_proxy_count == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Surge 配置表中未解析到任何节点，已跳过上传，避免覆盖现有 Clash 配置"
+            )
         
         # 保存并上传
         import os
