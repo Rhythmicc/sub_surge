@@ -183,34 +183,6 @@ def load_airport_proxies_from_cos(
     return rename_airport_proxies(proxy_list, airport_config.name)
 
 
-def load_airport_proxies_by_updating(
-    airport_config: AirportConfig,
-    global_config: GlobalConfig
-) -> List[str]:
-    """回退到旧逻辑：即时更新机场后读取临时配置"""
-    result = update_airport(airport_config, global_config, disable_upload=True)
-    if not result.get("success"):
-        raise Exception(result.get("error") or "即时更新机场失败")
-
-    conf_file = f"{airport_config.name}.conf"
-    if not os.path.exists(conf_file):
-        raise Exception(f"未找到即时生成的配置文件: {conf_file}")
-
-    try:
-        with open(conf_file, 'r', encoding='utf-8') as f:
-            lines = [line.strip() for line in f.readlines()]
-
-        proxy_list, _ = parse_with_config(lines, airport_config)
-        proxy_list = deduplicate_proxies(proxy_list)
-        if not proxy_list:
-            raise Exception("即时生成配置中未解析到代理节点")
-
-        return rename_airport_proxies(proxy_list, airport_config.name)
-    finally:
-        if os.path.exists(conf_file):
-            os.remove(conf_file)
-
-
 def update_airport(
     airport_config: AirportConfig, 
     global_config: GlobalConfig,
@@ -428,7 +400,6 @@ def merge_airports(
         
         all_proxies = []
         merged_airports = []
-        source_warnings = []
         
         # 收集所有机场的代理
         for name in airport_names:
@@ -439,13 +410,13 @@ def merge_airports(
             try:
                 renamed_list = load_airport_proxies_from_cos(airport, global_config)
             except Exception as e:
-                warning = f"{name}: 对象存储配置不可用，回退到订阅更新: {e}"
-                source_warnings.append(warning)
-                print(warning)
-                renamed_list = load_airport_proxies_by_updating(airport, global_config)
+                raise Exception(f"{name}: 对象存储配置不可用或无节点，已停止合并: {e}")
 
             all_proxies.extend(renamed_list)
             merged_airports.append(name)
+
+        if not all_proxies:
+            raise Exception("未从对象存储解析到任何可合并节点，已停止合并")
 
         # 区域分组
         aim_regions = {
@@ -559,8 +530,7 @@ def merge_airports(
             "url": result_url,
             "airport_count": len(merged_airports),
             "proxy_count": len(all_proxies),
-            "regions": list(regions.keys()),
-            "warnings": source_warnings
+            "regions": list(regions.keys())
         }
     
     except Exception as e:
