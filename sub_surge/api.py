@@ -1122,30 +1122,20 @@ async def auto_update_task_func():
             # 如果配置了合并订阅，则执行合并
             if global_config.merge_airports and len(global_config.merge_airports) > 0:
                 try:
-                    merge_airports_to_update = []
-                    for airport_name in global_config.merge_airports:
-                        airport = config_manager.get_airport(airport_name)
-                        if airport and airport.disable_auto_update:
-                            logger.info(f"自动合并跳过机场 {airport_name}: 已关闭全局定时更新")
-                            continue
-                        merge_airports_to_update.append(airport_name)
-
-                    if not merge_airports_to_update:
-                        logger.info("自动合并已跳过: 所有合并机场均已关闭全局定时更新")
+                    merge_airports_to_update = list(global_config.merge_airports)
+                    logger.info(f"合并订阅: {merge_airports_to_update}")
+                    # 在线程池中执行阻塞的合并操作
+                    loop = asyncio.get_event_loop()
+                    result = await loop.run_in_executor(
+                        None,
+                        merge_airports,
+                        merge_airports_to_update,
+                        config_manager
+                    )
+                    if result.get('success'):
+                        logger.info("订阅合并成功")
                     else:
-                        logger.info(f"合并订阅: {merge_airports_to_update}")
-                        # 在线程池中执行阻塞的合并操作
-                        loop = asyncio.get_event_loop()
-                        result = await loop.run_in_executor(
-                            None,
-                            merge_airports,
-                            merge_airports_to_update,
-                            config_manager
-                        )
-                        if result.get('success'):
-                            logger.info("订阅合并成功")
-                        else:
-                            logger.error(f"订阅合并失败: {result.get('error')}")
+                        logger.error(f"订阅合并失败: {result.get('error')}")
                 except Exception as e:
                     logger.error(f"合并订阅时出错: {str(e)}")
                     
